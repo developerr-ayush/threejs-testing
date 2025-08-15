@@ -3,18 +3,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import GUI from "lil-gui";
 import { createScene } from "./scene.js";
 import { loadAllModels } from "./loadModels.js";
-import {
-  createMainCamera,
-  createChaseCamera,
-  updateChaseCamera,
-  setCameraAspect,
-} from "./cameras.js";
+import { createMainCamera, setCameraAspect } from "./cameras.js";
 import {
   MODEL_PATHS,
   carPositions,
   movementLerp,
-  cameraFollowLerp,
-  chaseCameraOffset,
+  orbitControlsConfig,
 } from "./config.js";
 
 // GUI
@@ -56,12 +50,20 @@ app.appendChild(renderer.domElement);
 const scene = createScene();
 
 // Cameras
-let mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
+const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
 
 // Orbit controls for main camera
 const controls = new OrbitControls(mainCamera, renderer.domElement);
-controls.enableDamping = true;
-controls.target.set(0, 0, 0);
+controls.enableDamping = orbitControlsConfig.enableDamping;
+controls.enablePan = orbitControlsConfig.enablePan;
+controls.minDistance = orbitControlsConfig.minDistance;
+controls.maxDistance = orbitControlsConfig.maxDistance;
+controls.target.set(
+  orbitControlsConfig.target.x,
+  orbitControlsConfig.target.y,
+  orbitControlsConfig.target.z
+);
+controls.update();
 
 // State for cars
 let carObjects = []; // Object3D for each car
@@ -107,7 +109,6 @@ const carCurrentPositions = carPositions.map(
   carPositions.forEach((pos, i) => {
     const folder = manualFolder.addFolder(`Car ${i + 1}`);
     folder.add(pos, "x", -100, 100, 0.1).name("Position X");
-    folder.add(pos, "y", -10, 20, 0.1).name("Position Y");
     folder.add(pos, "z", -100, 100, 0.1).name("Position Z");
     folder.open();
   });
