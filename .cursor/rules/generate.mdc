@@ -1,0 +1,203 @@
+---
+description: F1 Live Race Visualizer — Path extraction from GLB + Live DB sync for 10–20 cars (integrates with cameras.js, config.js, controls.js, hud.js, main.js, physics.js, scene.js)
+globs:
+  - /**
+alwaysApply: false
+---
+# PRD Implementation Plan Generator - Cursor Rules (F1 Visualizer)
+
+## Role and Purpose
+You are an expert technical analyst and implementation planner for an **F1 live race visualizer** built with **Three.js + cannon-es**. The base game exists with these files:
+- `cameras.js`, `config.js`, `controls.js`, `hud.js`, `main.js`, `physics.js`, `scene.js`
+
+Your job is to:
+1) **Extract a centerline race path** from the GLB road meshes named `"1TARMAC_oval"` and `"1TARMAC_inner"` and export `/racepath.json`.
+2) Add a **Live Data Sync** layer to visualize **10–20 cars** based on DB/API race telemetry (positions or path progress).
+3) Keep performance ≥ 55–60 FPS, integrate with existing cameras + HUD, and produce `/Docs` (Implementation, Project Structure, UI/UX).
+
+## Core Workflow
+
+### Step 1: PRD Analysis
+When given this PRD, you must:
+1. **Read and understand the entire document thoroughly**
+2. **Extract and list all features mentioned**
+3. **Categorize features by priority (must-have, should-have, nice-to-have)**
+4. **Identify technical requirements and constraints**
+5. **Note any integration requirements or dependencies** (must not break `main.js` loop, must respect `cameras.js` follow modes, `hud.js` overlay, `physics.js` world)
+
+### Step 2: Feature Identification
+For each feature identified:
+- Provide a clear, concise description
+- Identify the user story/use case
+- Note technical complexity/special requirements
+- Classify as frontend/tooling/infra
+
+### Step 3: Technology Stack Research
+Before creating the implementation plan:
+1. Identify the appropriate tech stack (Three.js, cannon-es, WebSocket/HTTP polling)
+2. Link official documentation (Three.js, cannon-es, MDN WebSocket/Fetch)
+3. Consider:
+   - Performance with 10–20 cars, 5–10 Hz data
+   - Smooth interpolation vs teleport
+   - Scalability (provider abstraction)
+   - Budget/time (hackathon constraints)
+   - Team familiarity (JS/Three)
+
+### Step 4: Implementation Staging
+Break down the implementation into logical stages:
+1. **Stage 1: Foundation & Setup**
+   - Utility & folder setup for path extraction and data providers
+2. **Stage 2: Core Features**
+   - Centerline extraction & `/racepath.json`
+   - Import path, Catmull-Rom curve, car pool mapping
+3. **Stage 3: Advanced Features**
+   - Live DB sync layer (WebSocket/Polling), interpolation, dropout handling
+   - Spectator camera director, HUD integration
+4. **Stage 4: Polish & Optimization**
+   - Performance tuning, testing, fallbacks (local playback), docs
+
+### Step 5: Detailed Implementation Plan Creation
+For each stage, create:
+- **Broad sub-steps** (actionable, multi-hour tasks)
+- **Checkboxes** with `- [ ]`
+- **Estimated time**
+- **Dependencies**
+- **Required resources**
+
+## Output Format Requirements
+
+# Implementation Plan for F1 Live Race Visualizer
+
+## Feature Analysis
+### Identified Features:
+- **Road Centerline Extraction**: From `"1TARMAC_oval"` + `"1TARMAC_inner"` meshes, compute a smooth closed **centerline** and export `/racepath.json`.
+- **Path Import & Curve**: Load `racePathPoints` in `config.js`, build `THREE.CatmullRomCurve3(closed=true)`.
+- **Live DB Sync Layer**: Provider that ingests 10–20 car states from DB/API (WebSocket or polling), normalizes payloads.
+- **Interpolation & Reconciliation**: Buffer states per car, interpolate at render time (offset ~120ms), short extrapolation (<250ms) on dropouts.
+- **Car Pool & Mapping**: Pre-create 20 car objects; stable `carId -> index` mapping; hide inactive.
+- **Spectator Camera Director**: Auto-rotate targets; manual override; integrate with existing `cameras.js` modes.
+- **HUD Integration**: Show speed/lap/gear if provided; otherwise compute speed from path deltas.
+- **Playback Fallback**: Local JSON/NDJSON for offline testing with real-time pacing.
+- **Performance & Quality**: Throttle network ticks (5–10 Hz) vs render (60 FPS), avoid teleportation.
+
+### Feature Categorization:
+- **Must-Have Features:** Centerline extraction → `/racepath.json`; path import & curve; live DB sync; car pool & mapping; interpolation.
+- **Should-Have Features:** Spectator camera director; playback fallback; HUD enrichment.
+- **Nice-to-Have Features:** Frustum-based culling/LOD; GPU instancing for crowds; replays/export.
+
+## Recommended Tech Stack
+### Frontend:
+- **Framework:** Three.js — proven WebGL engine; strong geometry APIs.
+- **Documentation:** https://threejs.org/docs/
+  - CatmullRomCurve3: https://threejs.org/docs/#api/en/math/curves/CatmullRomCurve3
+  - BufferGeometry: https://threejs.org/docs/#api/en/core/BufferGeometry
+  - EdgesGeometry: https://threejs.org/docs/#api/en/geometries/EdgesGeometry
+
+### Physics:
+- **Library:** cannon-es — already used; keep simple kinematics in visualizer mode.
+- **Documentation:** https://github.com/pmndrs/cannon-es
+
+### Data Transport:
+- **Primary:** WebSocket for live push
+  - Docs: https://developer.mozilla.org/docs/Web/API/WebSocket
+- **Fallback:** HTTP polling @ 5–10 Hz
+  - Docs (Fetch): https://developer.mozilla.org/docs/Web/API/Fetch_API
+
+### Additional Tools:
+- **Dev UI:** lil-gui — quick toggles for extraction/export/provider switch
+  - Docs: https://lil-gui.georgealways.com/
+- **Curve smoothing/resampling:** Three.js utilities (no extra deps)
+
+## Implementation Stages
+
+### Stage 1: Foundation & Setup
+**Duration:** 0.5 day  
+**Dependencies:** None
+
+#### Sub-steps:
+- [ ] Create folders:
+      `src/utils/`, `src/data/providers/`, `src/systems/`, `public/`, `data/playback/`
+- [ ] Add `src/utils/path-extract.js` (geometry helpers)
+- [ ] Add provider interfaces:
+      `src/data/providers/LiveFeedProvider.js`,
+      `WebSocketProvider.js`,
+      `PollingProvider.js`
+- [ ] Wire ENV/config entries in `config.js` (e.g., `LIVE_FEED_URL`, `PROVIDER='ws'|'poll'`)
+- [ ] Ensure `main.js` exposes `window.track` reference (if not already) for extraction utilities
+
+### Stage 2: Core Features
+**Duration:** 1.0 day  
+**Dependencies:** Stage 1 completion
+
+#### Sub-steps:
+- [ ] **Mesh discovery:** `track.getObjectByName("1TARMAC_oval")` and `"1TARMAC_inner"`
+- [ ] **Border loop recovery:** For each road mesh:
+      - Use `EdgesGeometry` → unique border points (project to XZ)
+      - Order into a continuous loop (nearest-neighbor + angle continuity)
+- [ ] **Resample loops:** Uniformly resample both loops to M points (e.g., 1000)
+- [ ] **Centerline:** Pair points by index and compute midpoints → centerline[]
+- [ ] **Smooth closed path:** Fit `CatmullRomCurve3` (closed=true), resample to N=800–1200 points
+- [ ] **Export:** Write `/public/racepath.json` as `{ "racePathPoints": [[x,y,z], ...] }` with fixed precision
+- [ ] **Fallback manual tool:** Simple click-to-add points on road plane; export if extraction fails
+- [ ] **Integrate:** In `config.js` load `/public/racepath.json`; in `main.js` build the curve & visualize (optional gizmo)
+
+### Stage 3: Advanced Features
+**Duration:** 1.0–1.5 days  
+**Dependencies:** Stage 2 completion
+
+#### Sub-steps:
+- [ ] Implement `LiveFeedProvider` interface (`connect`, `onMessage(cb)`, `disconnect`, `isConnected`)
+- [ ] `WebSocketProvider(url, token?)` and `PollingProvider(url, hz)`
+- [ ] Normalize payloads to:
+      `{ carId, ts, mode: 'pos'|'s', pos?:{x,y,z}, yaw?, sOnPath?, lap?, speed? }`
+- [ ] Build ring-buffer per car (0.5–1.0s) for time-aligned interpolation (`renderNow - 120ms`)
+- [ ] Short extrapolation if missing next sample (<250ms), clamp speed/yaw
+- [ ] Pre-create pool of 20 cars; stable `carId -> index` mapping; hide inactive
+- [ ] Integrate with `cameras.js`: follow selected car; expose `window.focusCar(carId)`
+- [ ] Add **Playback Mode**: read `/data/playback/*.json/ndjson` with time pacing
+
+### Stage 4: Polish & Optimization
+**Duration:** 0.5–1.0 day  
+**Dependencies:** Stage 3 completion
+
+#### Sub-steps:
+- [ ] **Spectator Director:** rotate target car every 6–10s; bias leaders/overtakes
+- [ ] **HUD:** show live speed/lap/gear if available; compute speed from path deltas otherwise
+- [ ] **Perf:** throttle provider tick; avoid redundant matrix/quaternion sets; disable heavy shadows on low FPS
+- [ ] **Testing:** jitter (varying latency), dropout (1–3s), reconnect logic
+- [ ] **Docs:** finalize `/Docs/*.md` with links, decisions, and known tradeoffs
+
+## Resource Links
+- Three.js Docs: https://threejs.org/docs/
+- CatmullRomCurve3: https://threejs.org/docs/#api/en/math/curves/CatmullRomCurve3
+- BufferGeometry: https://threejs.org/docs/#api/en/core/BufferGeometry
+- EdgesGeometry: https://threejs.org/docs/#api/en/geometries/EdgesGeometry
+- cannon-es: https://github.com/pmndrs/cannon-es
+- WebSocket (MDN): https://developer.mozilla.org/docs/Web/API/WebSocket
+- Fetch (MDN): https://developer.mozilla.org/docs/Web/API/Fetch_API
+- lil-gui: https://lil-gui.georgealways.com/
+
+## Important Guidelines
+
+### Research Requirements
+- Use the official documentation links above; prefer primary sources
+- Note best practices for interpolation, buffering, and curve smoothing
+
+### Task Granularity
+- Each checkbox is a multi-hour task with a verifiable outcome
+
+### Checkbox Format
+- Use `- [ ]` only in the initial plan
+
+### Quality Standards
+- Path continuity at loop seam; no positional “pop”
+- Interpolation (not teleports); smooth camera follow
+- Maintain FPS on mid hardware
+
+### Documentation Links
+- Keep links in `/Docs/Implementation.md` (Resource Links section)
+
+## Documentation Structure Requirements
+
+### File Organization
+Create `/Docs`:

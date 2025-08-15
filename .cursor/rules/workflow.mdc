@@ -1,0 +1,78 @@
+---
+alwaysApply: true
+---
+
+# Development Agent Workflow - Cursor Rules (F1 Visualizer)
+
+## Primary Directive
+Implement **Path Extraction** + **Live DB Sync** while keeping existing systems intact:
+`cameras.js`, `config.js`, `controls.js`, `hud.js`, `main.js`, `physics.js`, `scene.js`.
+
+## Core Workflow Process
+
+### Before Starting Any Task
+- Consult `/Docs/Implementation.md` for current stage & tasks
+- Check dependencies/prereqs (e.g., track loaded, mesh names: "1TARMAC_oval", "1TARMAC_inner")
+- Verify scope understanding
+
+### Task Execution Protocol
+
+#### 1. Task Assessment
+- If geometry/path → work in `src/utils/path-extract.js`
+- If data transport → `src/data/providers/*`
+- If camera/HUD → `cameras.js`, `hud.js`, and integration in `main.js`
+
+#### 2. Todo Decomposition
+- For complex tasks (loop ordering, interpolation), create a concise todo list before coding
+
+#### 3. Documentation Research
+- Use official docs (Three.js geometry & curves; MDN WebSocket/Fetch)
+- Keep links updated in `/Docs/Implementation.md`
+
+#### 4. UI/UX Implementation
+- Follow `/Docs/UI_UX_doc.md` (HUD layout, camera director rules)
+- Ensure spectator director doesn’t fight manual overrides (`window.focusCar`)
+
+#### 5. Project Structure Compliance
+- Only add files under documented paths:
+  - `src/utils/path-extract.js`
+  - `src/data/providers/LiveFeedProvider.js`
+  - `src/data/providers/WebSocketProvider.js`
+  - `src/data/providers/PollingProvider.js`
+  - `src/systems/cameraDirector.js`
+  - `public/racepath.json`
+- Reference and preserve existing files (`cameras.js`, `config.js`, `controls.js`, `hud.js`, `main.js`, `physics.js`, `scene.js`)
+
+#### 6. Error Handling
+- **Geometry fail**: fallback to manual point-paint tool; log cause (e.g., non-manifold edges)
+- **Network fail**: auto-switch to playback mode with `/data/playback/sample.ndjson`
+- Document issues/resolutions in `/Docs/Bug_tracking.md` (create if missing)
+
+#### 7. Task Completion
+Mark complete only when:
+- `/public/racepath.json` exists with 800–1200 closed, evenly spaced points
+- Live feed (mocked @ 5–10 Hz) moves 10–20 cars smoothly (no visible teleports)
+- Interpolation offset (~120ms) applied; dropout recovery (<250ms extrapolation)
+- Spectator director cycles targets smoothly; HUD shows correct data
+- No console spam; ≥ 55 FPS on default settings
+
+### File Reference Priority
+1. `/Docs/Bug_tracking.md`
+2. `/Docs/Implementation.md`
+3. `/Docs/project_structure.md`
+4. `/Docs/UI_UX_doc.md`
+
+## Critical Rules
+- **NEVER** block the render loop
+- **NEVER** teleport cars on state updates; always interpolate (or short extrapolate)
+- **NEVER** change existing camera names/modes without updating docs
+- **ALWAYS** keep Catmull-Rom closed & continuous at index wrap
+- **ALWAYS** export racepath with fixed precision and stable ordering
+
+## Dev Console Shortcuts (to implement)
+- `window.extractPath()` → runs extraction and downloads `/public/racepath.json`
+- `window.playback(filePath)` → starts local playback with real-time pacing
+- `window.setProvider('ws'|'poll', opts)` → hot-swap providers
+- `window.focusCar(carId)` → camera lock & HUD target
+
+Remember: Build a cohesive, well-documented, and maintainable visualizer. Every decision should support smooth visuals, stable data sync, and consistent UX.
