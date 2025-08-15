@@ -1,7 +1,25 @@
+import racePathData from "./racepath.json";
+
+export const keyboardControls = {
+  forward: "w",
+  backward: "s",
+  left: "a", // strafe left
+  right: "d", // strafe right
+  yawLeft: "q",
+  yawRight: "e",
+  force: 20,
+  torque: 10,
+  turnSpeed: 2.5, // radians per second
+};
+
 export const physicsConfig = {
   gravity: { x: 0, y: -9.82, z: 0 },
   carMass: 1,
   groundFriction: 0.3,
+  carDimensions: { x: 2, y: 0.5, z: 4 },
+  linearDamping: 0.4,
+  angularDamping: 0.6,
+  suspensionOffset: 0.6, // visual Y offset to keep car above the track mesh
 };
 
 export const cameraConfig = {
@@ -9,8 +27,23 @@ export const cameraConfig = {
   aspect: window.innerWidth / window.innerHeight,
   near: 0.1,
   far: 5000,
-  position: { x: 0, y: 50, z: 100 },
+  position: { x: 0, y: 10, z: 20 },
   lookAt: { x: 0, y: 0, z: 0 },
+};
+
+export const followCameraConfig = {
+  top: { offset: { x: 0, y: 12, z: 0 }, lookOffset: { x: 0, y: 0, z: 0 } },
+  chase: { offset: { x: 0, y: 5, z: -10 }, lookOffset: { x: 0, y: 2, z: 6 } },
+};
+
+export const gameplayConfig = {
+  physicsEnabled: false,
+};
+
+export const kinematicMovement = {
+  forwardSpeed: 15,
+  strafeSpeed: 10,
+  yawSpeed: 2.5, // radians/sec
 };
 
 export const orbitControlsConfig = {
@@ -23,11 +56,24 @@ export const orbitControlsConfig = {
 
 // Parameters for car target positions (world space)
 export const carPositions = [
-  { x: 10, y: 0, z: 5 },
-  { x: 12, y: 0, z: 5 },
-  { x: 14, y: 0, z: 5 },
-  { x: 16, y: 0, z: 5 },
+  // Car 1 spawn aligned with your provided grid location (approx.)
+  { x: -6.64, y: 2, z: -25.11 },
+  { x: -25, y: 2, z: -30 },
+  { x: -29, y: 2, z: -35 },
+  { x: -25, y: 2, z: -35 },
 ];
+
+// Default spawn for Car 1 (used by Reset/auto-respawn)
+export const car1Spawn = {
+  position: { x: -6.64, y: 2, z: -25.11 },
+  yaw: 1.57079632679,
+};
+
+export const racePathPoints = racePathData.racePathPoints.map((p) => ({
+  x: p[0],
+  y: p[1],
+  z: p[2],
+}));
 
 // Tuning
 export const movementLerp = 0.02; // 0..1 per frame

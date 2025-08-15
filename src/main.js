@@ -1,20 +1,37 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import GUI from "lil-gui";
+import * as CANNON from "cannon-es";
 import { createScene } from "./scene.js";
 import { loadAllModels } from "./loadModels.js";
-import { createMainCamera, setCameraAspect } from "./cameras.js";
+import {
+  createMainCamera,
+  setCameraAspect,
+  getFollowCameraTransform,
+  createHelperCamera,
+} from "./cameras.js";
 import {
   MODEL_PATHS,
   carPositions,
   movementLerp,
   orbitControlsConfig,
+  racePathPoints,
+  car1Spawn,
+  physicsConfig,
+  gameplayConfig,
+  kinematicMovement,
+  keyboardControls,
 } from "./config.js";
 import {
   createPhysicsWorld,
-  createGroundPlane,
+  createTrackBody,
   createCarBody,
 } from "./physics.js";
+import {
+  initializeKeyboardControls,
+  updateCarControls,
+  keyState,
+} from "./controls.js";
 
 // GUI
 const gui = new GUI();
@@ -31,12 +48,9 @@ const controlState = {
 };
 
 // Create a closed-loop path for the race track
-const racePath = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0, 2, 80),
-  new THREE.Vector3(90, 2, 0),
-  new THREE.Vector3(0, 2, -80),
-  new THREE.Vector3(-90, 2, 0),
-]);
+const racePath = new THREE.CatmullRomCurve3(
+  racePathPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z))
+);
 racePath.curveType = "catmullrom";
 racePath.closed = true;
 
@@ -54,24 +68,26 @@ app.appendChild(renderer.domElement);
 // Scene
 const scene = createScene();
 
-// Physics
-const world = createPhysicsWorld();
+// Physics (optional)
+const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
 
 // Cameras
 const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
+const helperCamera = createHelperCamera(window.innerWidth, window.innerHeight);
+let activeCamera = mainCamera; // switchable between follow and helper
+let followMode = "top"; // "top" | "chase"
 
-// Orbit controls for main camera
-const controls = new OrbitControls(mainCamera, renderer.domElement);
-controls.enableDamping = orbitControlsConfig.enableDamping;
-controls.enablePan = orbitControlsConfig.enablePan;
-controls.minDistance = orbitControlsConfig.minDistance;
-controls.maxDistance = orbitControlsConfig.maxDistance;
-controls.target.set(
-  orbitControlsConfig.target.x,
-  orbitControlsConfig.target.y,
-  orbitControlsConfig.target.z
-);
-controls.update();
+// Helper camera controls (free navigation)
+const helperControls = new OrbitControls(helperCamera, renderer.domElement);
+helperControls.enableDamping = true;
+helperControls.enablePan = true;
+helperControls.minDistance = 1;
+helperControls.maxDistance = 5000;
+helperControls.target.set(0, 0, 0);
+helperControls.update();
+
+// Initialize keyboard controls
+initializeKeyboardControls();
 
 // State for cars
 let carObjects = []; // Object3D for each car
@@ -99,6 +115,12 @@ const carCurrentPositions = carPositions.map(
   trackObject = track;
   scene.add(track);
 
+  // Create track physics body if physics enabled
+  if (world) {
+    const trackBody = createTrackBody(trackObject);
+    world.addBody(trackBody);
+  }
+
   carObjects = cars.map((car, i) => {
     car.traverse((o) => {
       if (o.isMesh) {
@@ -106,30 +128,201 @@ const carCurrentPositions = carPositions.map(
         o.receiveShadow = true;
       }
     });
-    car.position.copy(carCurrentPositions[i] || new THREE.Vector3());
+    // Place cars. Car 1 uses precise spawn, others use defaults
+    if (i === 0) {
+      car.position.set(
+        car1Spawn.position.x,
+        car1Spawn.position.y + physicsConfig.suspensionOffset,
+        car1Spawn.position.z
+      );
+      car.rotation.y = car1Spawn.yaw; // align yaw to track
+    } else {
+      car.position.copy(carCurrentPositions[i] || new THREE.Vector3());
+      // Ensure cars face along +Z (down the straight)
+      car.rotation.y = Math.PI / 2;
+    }
     scene.add(car);
 
-    // Create a physics body for the car
-    const carBody = createCarBody(carPositions[i]);
-    world.addBody(carBody);
-    carBodies.push(carBody);
+    // Create a physics body for the car if physics enabled
+    if (world) {
+      const carBody = createCarBody(
+        i === 0
+          ? {
+              x: car1Spawn.position.x,
+              y: car1Spawn.position.y,
+              z: car1Spawn.position.z,
+            }
+          : carPositions[i]
+      );
+      // Match body orientation with visual car
+      const q = new CANNON.Quaternion();
+      q.setFromAxisAngle(
+        new CANNON.Vec3(0, 1, 0),
+        i === 0 ? car1Spawn.yaw : Math.PI / 2
+      );
+      carBody.quaternion.copy(q);
+      world.addBody(carBody);
+      carBodies.push(carBody);
+    } else {
+      carBodies.push(null);
+    }
 
     return car;
   });
 
-  // Create ground plane
-  createGroundPlane(world);
-
   // Create GUI controls
   gui.add(controlState, "raceMode").name("Enable Race Mode");
 
+  // Camera controls
+  const camFolder = gui.addFolder("Camera");
+  const camState = {
+    active: "Follow Car 1",
+    followMode: "Top",
+    axesHelper: false,
+    gridHelper: false,
+  };
+  camFolder
+    .add(camState, "active", ["Follow Car 1", "Helper Camera"])
+    .name("Active Camera")
+    .onChange((v) => {
+      activeCamera = v === "Helper Camera" ? helperCamera : mainCamera;
+    });
+  camFolder
+    .add(camState, "followMode", ["Top", "Chase"])
+    .name("Follow Mode")
+    .onChange((v) => {
+      followMode = v.toLowerCase();
+    });
+  let axesHelper = null;
+  let gridHelper = null;
+  camFolder
+    .add(camState, "axesHelper")
+    .name("Axes Helper")
+    .onChange((v) => {
+      if (v) {
+        axesHelper = new THREE.AxesHelper(50);
+        scene.add(axesHelper);
+      } else if (axesHelper) {
+        scene.remove(axesHelper);
+        axesHelper = null;
+      }
+    });
+  camFolder
+    .add(camState, "gridHelper")
+    .name("Grid Helper")
+    .onChange((v) => {
+      if (v) {
+        gridHelper = new THREE.GridHelper(500, 50);
+        scene.add(gridHelper);
+      } else if (gridHelper) {
+        scene.remove(gridHelper);
+        gridHelper = null;
+      }
+    });
+
+  // Capture coordinate buttons
+  const captureFolder = gui.addFolder("Capture");
+  const capture = {
+    copyCar1: () => {
+      const pos = carBodies[0]?.position || carObjects[0].position;
+      const q = carBodies[0]?.quaternion || carObjects[0].quaternion;
+      const yaw = new THREE.Euler().setFromQuaternion(
+        new THREE.Quaternion(q.x, q.y, q.z, q.w),
+        "YXZ"
+      ).y;
+      const data = { position: { x: pos.x, y: pos.y, z: pos.z }, yaw };
+      const text = JSON.stringify(data, null, 2);
+      if (navigator.clipboard)
+        navigator.clipboard.writeText(text).catch(() => {});
+      console.log("Captured Car1:", text);
+    },
+    copyHelperCam: () => {
+      const p = helperCamera.position;
+      const t = helperControls.target;
+      const data = {
+        camera: { x: p.x, y: p.y, z: p.z },
+        target: { x: t.x, y: t.y, z: t.z },
+      };
+      const text = JSON.stringify(data, null, 2);
+      if (navigator.clipboard)
+        navigator.clipboard.writeText(text).catch(() => {});
+      console.log("Captured Helper Camera:", text);
+    },
+  };
+  captureFolder.add(capture, "copyCar1").name("Copy Car1 Coords");
+  captureFolder.add(capture, "copyHelperCam").name("Copy Helper Cam");
+
+  // Car 1 utilities
+  const car1Folder = gui.addFolder("Car 1 Utils");
+  const car1Utils = {
+    resetToSpawn: () => {
+      if (!carObjects[0]) return;
+      if (carBodies[0]) {
+        const body = carBodies[0];
+        body.velocity.set(0, 0, 0);
+        body.angularVelocity.set(0, 0, 0);
+        body.position.set(
+          car1Spawn.position.x,
+          car1Spawn.position.y,
+          car1Spawn.position.z
+        );
+        const q = new CANNON.Quaternion();
+        q.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), car1Spawn.yaw);
+        body.quaternion.copy(q);
+        carObjects[0].position.set(
+          car1Spawn.position.x,
+          car1Spawn.position.y,
+          car1Spawn.position.z
+        );
+        carObjects[0].quaternion.set(q.x, q.y, q.z, q.w);
+      } else {
+        carObjects[0].position.set(
+          car1Spawn.position.x,
+          car1Spawn.position.y + physicsConfig.suspensionOffset,
+          car1Spawn.position.z
+        );
+        carObjects[0].rotation.set(0, car1Spawn.yaw, 0);
+      }
+      console.log("Car1 reset to spawn", car1Spawn);
+    },
+  };
+  car1Folder.add(car1Utils, "resetToSpawn").name("Reset to Spawn");
+
+  // Expose a helper to set car 1 transform from console
+  window.setCar1Transform = (data) => {
+    try {
+      if (!data) return;
+      const p = data.position || data.pos || data;
+      const yaw = data.yaw ?? car1Spawn.yaw;
+      if (carBodies[0]) {
+        carBodies[0].velocity.set(0, 0, 0);
+        carBodies[0].angularVelocity.set(0, 0, 0);
+        if (p && typeof p.x === "number") {
+          carBodies[0].position.set(p.x, p.y ?? 2, p.z);
+          carObjects[0].position.set(p.x, p.y ?? 2, p.z);
+        }
+        const q = new CANNON.Quaternion();
+        q.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw);
+        carBodies[0].quaternion.copy(q);
+        carObjects[0].quaternion.set(q.x, q.y, q.z, q.w);
+      } else {
+        if (p && typeof p.x === "number") {
+          carObjects[0].position.set(p.x, p.y ?? 2, p.z);
+        }
+        carObjects[0].rotation.set(0, yaw, 0);
+      }
+      console.log("Car1 set to", { position: p, yaw });
+    } catch (e) {
+      console.error("Failed to set Car1 transform", e);
+    }
+  };
+
   const manualFolder = gui.addFolder("Manual Controls");
-  manualFolder.close(); // Initially closed as physics is now driving motion
+  manualFolder.open();
   carPositions.forEach((pos, i) => {
     const folder = manualFolder.addFolder(`Car ${i + 1}`);
     folder.add(pos, "x", -100, 100, 0.1).name("Position X");
     folder.add(pos, "z", -100, 100, 0.1).name("Position Z");
-    folder.open();
   });
 
   const raceFolder = gui.addFolder("Race Controls");
@@ -145,6 +338,7 @@ const carCurrentPositions = carPositions.map(
 function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   setCameraAspect(mainCamera, window.innerWidth / window.innerHeight);
+  setCameraAspect(helperCamera, window.innerWidth / window.innerHeight);
 }
 window.addEventListener("resize", onWindowResize);
 
@@ -155,15 +349,18 @@ function animate(time) {
   lastTime = time;
 
   // Step the physics world
-  world.step(1 / 60, delta, 3);
+  if (world) {
+    world.step(1 / 60, delta, 3);
+  }
 
   // Animate cars based on the current mode
   if (controlState.raceMode) {
     // RACE MODE: Cars follow the racePath
     for (let i = 0; i < carObjects.length; i++) {
       const car = carObjects[i];
+      const body = carBodies[i];
       const state = controlState.cars[i];
-      if (!car || !state) continue;
+      if (!car || !state || !body) continue;
 
       // Update progress and loop around the track
       state.progress = (state.progress + state.speed * delta) % 1;
@@ -171,28 +368,107 @@ function animate(time) {
       // Set position from the curve
       const newPos = racePath.getPointAt(state.progress);
       car.position.copy(newPos);
+      body.position.copy(newPos);
 
       // Set orientation from the curve tangent
       const tangent = racePath.getTangentAt(state.progress).normalize();
       const lookAtPosition = new THREE.Vector3().copy(newPos).add(tangent);
       car.lookAt(lookAtPosition);
+      body.quaternion.copy(car.quaternion);
     }
   } else {
     // PHYSICS-DRIVEN MODE
     for (let i = 0; i < carObjects.length; i++) {
       const car = carObjects[i];
       const body = carBodies[i];
-      if (!car || !body) continue;
+      if (!car) continue;
 
-      // Sync visual object with physics body
-      car.position.copy(body.position);
-      car.quaternion.copy(body.quaternion);
+      // Sync visual object if physics enabled
+      if (world && body) {
+        car.position.copy(body.position);
+        car.quaternion.copy(body.quaternion);
+      }
+
+      // Apply keyboard controls to the first car
+      if (i === 0) {
+        if (world && body) {
+          updateCarControls(body, delta, (pos, vel) => {
+            console.log(
+              `Car1 position: x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(
+                2
+              )}, z=${pos.z.toFixed(2)} | velocity: x=${vel.x.toFixed(
+                2
+              )}, y=${vel.y.toFixed(2)}, z=${vel.z.toFixed(2)}`
+            );
+          });
+        } else {
+          // Kinematic controls when physics is off
+          const moveDir = new THREE.Vector3();
+          const forward = keyState[keyboardControls.forward] ? 1 : 0;
+          const backward = keyState[keyboardControls.backward] ? 1 : 0;
+          const left = keyState[keyboardControls.left] ? 1 : 0;
+          const right = keyState[keyboardControls.right] ? 1 : 0;
+          const yawLeft = keyState[keyboardControls.yawLeft] ? 1 : 0;
+          const yawRight = keyState[keyboardControls.yawRight] ? 1 : 0;
+
+          // Yaw rotation
+          car.rotation.y +=
+            (yawLeft - yawRight) * kinematicMovement.yawSpeed * delta;
+
+          // Move along car's local axes
+          const forwardSpeed =
+            (forward - backward) * kinematicMovement.forwardSpeed * delta;
+          const strafeSpeed =
+            (right - left) * kinematicMovement.strafeSpeed * delta;
+          const quat = new THREE.Quaternion().setFromEuler(car.rotation);
+          const forwardVec = new THREE.Vector3(0, 0, 1)
+            .applyQuaternion(quat)
+            .multiplyScalar(forwardSpeed);
+          const rightVec = new THREE.Vector3(1, 0, 0)
+            .applyQuaternion(quat)
+            .multiplyScalar(strafeSpeed);
+          moveDir.copy(forwardVec).add(rightVec);
+          car.position.add(moveDir);
+        }
+      } else {
+        // Lerp other cars to target positions from GUI
+        const target = carPositions[i];
+        const targetVec = new CANNON.Vec3(target.x, target.y, target.z);
+        if (world && body) {
+          body.position.lerp(targetVec, movementLerp, body.position);
+          body.velocity.set(0, 0, 0); // Reset velocity
+        } else {
+          car.position.lerp(
+            new THREE.Vector3(target.x, target.y, target.z),
+            movementLerp
+          );
+        }
+      }
     }
   }
 
-  controls.update();
+  // Follow camera for car 1 in non-race mode
+  if (!controlState.raceMode) {
+    const { cameraPos, lookAt } = getFollowCameraTransform(
+      carBodies[0]?.position || carObjects[0].position,
+      carBodies[0]?.quaternion || carObjects[0].quaternion,
+      followMode
+    );
+    mainCamera.position.lerp(cameraPos, 0.2);
+    mainCamera.lookAt(lookAt);
+  }
 
-  renderer.render(scene, mainCamera);
+  helperControls.update();
+
+  renderer.render(scene, activeCamera);
 
   requestAnimationFrame(animate);
 }
+
+// Toggle follow camera mode with key 'c'
+window.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "c") {
+    followMode = followMode === "top" ? "chase" : "top";
+    console.log(`Camera mode: ${followMode}`);
+  }
+});
