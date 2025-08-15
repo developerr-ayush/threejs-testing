@@ -100,9 +100,9 @@ export const car1Spawn = {
 };
 
 export const racePathPoints = racePathData.racePathPoints.map((p) => ({
-  x: p[0],
-  y: p[1],
-  z: p[2],
+  x: p[0] * 0.1,
+  y: p[1] * 0.1,
+  z: p[2] * 0.1,
 }));
 
 // Tuning

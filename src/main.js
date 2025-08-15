@@ -99,6 +99,7 @@ initializeKeyboardControls();
 let carObjects = []; // Object3D for each car
 let carBodies = []; // Physics bodies for each car
 let trackObject = null;
+let racePathLine = null; // Visualizer for the race path
 const raycaster = new THREE.Raycaster();
 const down = new THREE.Vector3(0, -1, 0);
 
@@ -142,6 +143,13 @@ const carCurrentPositions = carPositions.map(
   });
   trackObject = track;
   scene.add(track);
+
+  // Create a visual representation of the race path for debugging
+  const pathPoints = racePath.getPoints(500);
+  const pathGeometry = new THREE.BufferGeometry().setFromPoints(pathPoints);
+  const pathMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+  racePathLine = new THREE.Line(pathGeometry, pathMaterial);
+  scene.add(racePathLine);
 
   // Create track physics body if physics enabled
   if (world) {
@@ -373,6 +381,79 @@ const carCurrentPositions = carPositions.map(
     raceFolder.add(state, "speed", 0, 0.05, 0.001).name(`Car ${i + 1} Speed`);
   });
   raceFolder.open();
+
+  // GUI controls for the race path overlay
+  const pathFolder = gui.addFolder("Race Path Overlay");
+  const pathState = {
+    visible: true,
+    color: 0xff0000,
+    yOffset: 0,
+    scale: 0.24,
+    rotationY: -0.0051,
+    rotationX: -1.57159,
+    xOffset:16.4 ,
+    zOffset: -30.3,
+  };
+  // Initialize line with state values
+  if (racePathLine) {
+    racePathLine.visible = pathState.visible;
+    racePathLine.material.color.set(pathState.color);
+    racePathLine.position.y = pathState.yOffset;
+    racePathLine.scale.setScalar(pathState.scale);
+    racePathLine.rotation.y = pathState.rotationY;
+    racePathLine.position.x = pathState.xOffset;
+    racePathLine.position.z = pathState.zOffset;
+    racePathLine.rotation.x = pathState.rotationX;
+  }
+  pathFolder
+    .add(pathState, "visible")
+    .name("Visible")
+    .onChange((v) => {
+      if (racePathLine) racePathLine.visible = v;
+    });
+  pathFolder
+    .addColor(pathState, "color")
+    .name("Color")
+    .onChange((c) => {
+      if (racePathLine) racePathLine.material.color.set(c);
+    });
+  pathFolder
+    .add(pathState, "yOffset", 0, 10, 0.1)
+    .name("Y Offset")
+    .onChange((y) => {
+      if (racePathLine) racePathLine.position.y = y;
+    });
+  pathFolder
+    .add(pathState, "scale", 0.1, 5, 0.01)
+    .name("Scale")
+    .onChange((s) => {
+      if (racePathLine) racePathLine.scale.setScalar(s);
+    });
+  pathFolder
+    .add(pathState, "rotationY", -Math.PI, Math.PI, 0.01)
+    .name("Rotation Y")
+    .onChange((r) => {
+      if (racePathLine) racePathLine.rotation.y = r;
+    });
+  pathFolder
+    .add(pathState, "xOffset", -100, 100, 0.1)
+    .name("X Offset")
+    .onChange((x) => {
+      if (racePathLine) racePathLine.position.x = x;
+    });
+  pathFolder
+    .add(pathState, "zOffset", -100, 100, 0.1)
+    .name("Z Offset")
+    .onChange((z) => {
+      if (racePathLine) racePathLine.position.z = z;
+    });
+  pathFolder
+    .add(pathState, "rotationX", -Math.PI, Math.PI, 0.01)
+    .name("Rotation X")
+    .onChange((r) => {
+      if (racePathLine) racePathLine.rotation.x = r;
+    });
+  pathFolder.open();
 
   // Path recorder helpers in console
   window.exportRecordedPathJSON = () => {

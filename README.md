@@ -97,3 +97,13 @@ This project is licensed under the ISC License - see the LICENSE file for detail
 
 - F1 car models used for educational purposes
 - Inspiration from official F1 broadcasts and games
+
+## road cordinates
+  visible: true,
+    color: 0xff0000,
+    yOffset: 0,
+    scale: 0.24,
+    rotationY: -0.0051,
+    rotationX: -1.57159,
+    xOffset:16.4 ,
+    zOffset: -30.3,
