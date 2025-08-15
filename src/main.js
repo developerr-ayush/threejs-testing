@@ -7,9 +7,9 @@ import { loadAllModels } from "./loadModels.js";
 import {
   createMainCamera,
   setCameraAspect,
-  getFollowCameraTransform,
   createHelperCamera,
 } from "./cameras.js";
+import { CameraManager, getPageCameraList } from "./cameraManager.js";
 import { createHUD, updateHUD, resizeHUD } from "./hud.js";
 import {
   MODEL_PATHS,
@@ -95,10 +95,9 @@ const scene = createScene();
 const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
 
 // Cameras
-const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
+const mainCamera = createMainCamera(window.innerWidth, window.innerHeight); // used as follow camera
 const helperCamera = createHelperCamera(window.innerWidth, window.innerHeight);
-let activeCamera = helperCamera; // switchable between follow and helper
-let followMode = "chase"; // "top" | "chase" | "bottom" | "t_cam" | "front_wing"
+let cameraManager = null;
 
 // HUD
 const { hudScene, hudCamera, elements: hudElements } = createHUD();
@@ -232,66 +231,30 @@ const carCurrentPositions = carPositions.map(
   // Create GUI controls
   gui.add(controlState, "raceMode").name("Enable Race Mode");
 
-  // Camera controls
-  const camFolder = gui.addFolder("Camera");
-  const camState = {
-    active: "Follow Car 1",
-    followMode: "Chase",
-    axesHelper: false,
-    gridHelper: false,
-  };
-  camFolder
-    .add(camState, "active", ["Follow Car 1", "Helper Camera"])
-    .name("Active Camera")
-    .onChange((v) => {
-      activeCamera = v === "Helper Camera" ? mainCamera : helperCamera;
-    });
-  camFolder
-    .add(camState, "followMode", [
-      "Top",
-      "Chase",
-      "Bottom",
-      "T-Cam",
-      "Front Wing",
-    ])
-    .name("Follow Mode")
-    .onChange((v) => {
-      // Convert UI labels to config keys
-      const modeMap = {
-        Top: "top",
-        Chase: "chase",
-        Bottom: "bottom",
-        "T-Cam": "t_cam",
-        "Front Wing": "front_wing",
-      };
-      followMode = modeMap[v] || "top";
-    });
-  let axesHelper = null;
-  let gridHelper = null;
-  camFolder
-    .add(camState, "axesHelper")
-    .name("Axes Helper")
-    .onChange((v) => {
-      if (v) {
-        axesHelper = new THREE.AxesHelper(50);
-        scene.add(axesHelper);
-      } else if (axesHelper) {
-        scene.remove(axesHelper);
-        axesHelper = null;
+  // Camera manager setup (keyboard: 1..n to switch, C to cycle cars on index, H to toggle helper)
+  const pageCameras = getPageCameraList(APP_MODE);
+  cameraManager = new CameraManager({
+    pageId: APP_MODE,
+    availableCameras: pageCameras,
+    followCamera: mainCamera,
+    helperCamera,
+    orbitControls: helperControls,
+    getCarCount: () => carObjects.length,
+    getCarPose: (idx) => {
+      const i = Math.max(0, Math.min(idx ?? 0, carObjects.length - 1));
+      if (carBodies[i]) {
+        return {
+          position: carBodies[i].position,
+          quaternion: carBodies[i].quaternion,
+        };
       }
-    });
-  camFolder
-    .add(camState, "gridHelper")
-    .name("Grid Helper")
-    .onChange((v) => {
-      if (v) {
-        gridHelper = new THREE.GridHelper(500, 50);
-        scene.add(gridHelper);
-      } else if (gridHelper) {
-        scene.remove(gridHelper);
-        gridHelper = null;
-      }
-    });
+      const obj = carObjects[i];
+      return obj
+        ? { position: obj.position, quaternion: obj.quaternion }
+        : null;
+    },
+    smoothing: 0.2,
+  });
 
   // Capture coordinate buttons
   const captureFolder = gui.addFolder("Capture");
@@ -839,24 +802,16 @@ function animate(time) {
   // Update path recording each frame (world mode)
   updateCreatePath(delta);
 
-  // Follow camera for car 1 in non-race mode
-  if (!controlState.raceMode) {
-    const { cameraPos, lookAt } = getFollowCameraTransform(
-      carBodies[0]?.position || carObjects[0].position,
-      carBodies[0]?.quaternion || carObjects[0].quaternion,
-      followMode
-    );
-    mainCamera.position.lerp(cameraPos, 0.2);
-    mainCamera.lookAt(lookAt);
-  }
+  // Update active camera (follow/helper) every frame
+  cameraManager.update();
 
   helperControls.update();
 
   // Render main scene with active camera
-  renderer.render(scene, activeCamera);
+  renderer.render(scene, cameraManager.getActiveCamera());
 
   // Render HUD if enabled
-  if (showHUD && activeCamera !== helperCamera) {
+  if (showHUD && cameraManager.getActiveCamera() !== helperCamera) {
     // Don't clear the depth buffer so HUD renders on top
     renderer.autoClear = false;
     renderer.clearDepth();
@@ -879,25 +834,8 @@ function animate(time) {
   requestAnimationFrame(animate);
 }
 
-// Keyboard controls for camera and HUD
+// Keyboard: path recording toggle with 'r'
 window.addEventListener("keydown", (e) => {
-  // Toggle follow camera mode with key 'c'
-  if (e.key.toLowerCase() === "c") {
-    // Cycle through camera modes
-    const modes = ["top", "chase", "bottom", "t_cam", "front_wing"];
-    const currentIndex = modes.indexOf(followMode);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    followMode = modes[nextIndex];
-    console.log(`Camera mode: ${followMode}`);
-  }
-
-  // Toggle HUD with 'h' key
-  if (e.key.toLowerCase() === "h") {
-    showHUD = !showHUD;
-    console.log(`HUD: ${showHUD ? "visible" : "hidden"}`);
-  }
-
-  // Toggle path recording with 'r'
   if (e.key.toLowerCase() === "r") {
     pathRecorder.recording = !pathRecorder.recording;
     console.log(

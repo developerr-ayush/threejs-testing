@@ -34,8 +34,8 @@ export function getFollowCameraTransform(
   targetQuaternion,
   mode = "top"
 ) {
-  const config =
-    mode === "chase" ? followCameraConfig.chase : followCameraConfig.top;
+  // Select configuration for the requested follow camera mode
+  const config = followCameraConfig[mode] || followCameraConfig.top;
   const offset = new THREE.Vector3(
     config.offset.x,
     config.offset.y,

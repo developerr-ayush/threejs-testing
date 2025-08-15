@@ -1,0 +1,323 @@
+---
+alwaysApply: false
+---
+
+You are an expert in Three.js, JavaScript ES6, and front-end optimization.
+I have three pages in my racing simulation project:
+
+Simulation Page: index.html
+
+Drive-to-Create Page: simulation.html
+
+Manual Path Page: path.html
+
+I want you to implement a complete camera and control system with the following rules:
+
+1. Camera Angles per Page & Defaults
+(A) Simulation Page – index.html
+
+Available Cameras:
+
+Chase Camera – default
+
+Top Camera
+
+Bottom Camera
+
+T_Cam
+
+Front_Wing
+
+Helper
+
+(B) Drive-to-Create Page – simulation.html
+
+Available Cameras:
+
+Chase Camera – default
+
+Top Camera
+
+Helper
+
+(C) Manual Path Page – path.html
+
+Available Cameras:
+
+Top Camera – default
+
+Helper
+
+2. Keyboard Shortcuts
+Camera Switching Keys
+
+Use number keys for switching cameras.
+
+1 → First camera in the list for that page
+
+2 → Second camera in the list for that page
+
+3 → Third camera in the list (if available)
+
+4, 5, 6 → Continue as per list for index.html only
+
+Car Switching (Only for index.html)
+
+C (uppercase or lowercase) → Cycle through available cars to watch
+
+When switching cars, keep the same selected camera angle unless changed manually
+
+Helper Controls
+
+H → Toggle helper camera ON/OFF (if available on that page)
+
+3. Local Storage Behavior
+
+Store the last selected camera angle for each page in localStorage.
+
+Store the last selected car for index.html in localStorage.
+
+On page load, read from localStorage and automatically set the camera and car to the saved values.
+
+Example storage keys:
+
+camera_index.html
+
+camera_simulation.html
+
+camera_path.html
+
+selected_car_index.html
+
+4. Technical Implementation Details
+
+Use Three.js PerspectiveCamera for chase, top, bottom, t_cam, front_wing views.
+
+Use OrthographicCamera only if explicitly needed (like top-down view).
+
+Manage cameras using a CameraManager class:
+
+Holds all camera objects for the current page
+
+Handles switching logic and keyboard binding
+
+Handles localStorage read/write
+
+Optional: Displays current camera name in a small HUD overlay when switching
+
+Use modular ES6 imports so that camera management is reusable between pages.
+
+Each page should only initialize the cameras relevant to it.
+
+Car-following cameras (like chase, front_wing) should attach to the selected car’s object in the scene.
+
+Helper camera can be a free-fly debug camera with OrbitControls.
+
+5. Expected Output
+
+Updated index.html, simulation.html, and path.html scripts with correct camera initialization, switching logic, and car selection (for index).
+
+A shared file cameraManager.js that:
+
+Initializes cameras based on page config
+
+Handles keyboard shortcuts
+
+Saves/loads from localStorage
+
+Code should be fully commented, clean, and optimized for performance.
+
+💡 Example Keyboard Mapping for index.html:
+
+1 → Chase Camera
+
+2 → Top Camera
+
+3 → Bottom Camera
+
+4 → T_Cam
+
+5 → Front_Wing
+
+6 → Helper
+
+C → Cycle cars
+
+H → Toggle helper
+
+💡 Example Keyboard Mapping for simulation.html:
+
+1 → Chase Camera
+
+2 → Top Camera
+
+3 → Helper
+
+H → Toggle helper
+
+💡 Example Keyboard Mapping for path.html:
+
+1 → Top Camera
+
+2 → Helper
+
+H → Toggle helperYou are an expert in Three.js, JavaScript ES6, and front-end optimization.
+I have three pages in my racing simulation project:
+
+Simulation Page: index.html
+
+Drive-to-Create Page: simulation.html
+
+Manual Path Page: path.html
+
+I want you to implement a complete camera and control system with the following rules:
+
+1. Camera Angles per Page & Defaults
+(A) Simulation Page – index.html
+
+Available Cameras:
+
+Chase Camera – default
+
+Top Camera
+
+Bottom Camera
+
+T_Cam
+
+Front_Wing
+
+Helper
+
+(B) Drive-to-Create Page – simulation.html
+
+Available Cameras:
+
+Chase Camera – default
+
+Top Camera
+
+Helper
+
+(C) Manual Path Page – path.html
+
+Available Cameras:
+
+Top Camera – default
+
+Helper
+
+2. Keyboard Shortcuts
+Camera Switching Keys
+
+Use number keys for switching cameras.
+
+1 → First camera in the list for that page
+
+2 → Second camera in the list for that page
+
+3 → Third camera in the list (if available)
+
+4, 5, 6 → Continue as per list for index.html only
+
+Car Switching (Only for index.html)
+
+C (uppercase or lowercase) → Cycle through available cars to watch
+
+When switching cars, keep the same selected camera angle unless changed manually
+
+Helper Controls
+
+H → Toggle helper camera ON/OFF (if available on that page)
+
+3. Local Storage Behavior
+
+Store the last selected camera angle for each page in localStorage.
+
+Store the last selected car for index.html in localStorage.
+
+On page load, read from localStorage and automatically set the camera and car to the saved values.
+
+Example storage keys:
+
+camera_index.html
+
+camera_simulation.html
+
+camera_path.html
+
+selected_car_index.html
+
+4. Technical Implementation Details
+
+Use Three.js PerspectiveCamera for chase, top, bottom, t_cam, front_wing views.
+
+Use OrthographicCamera only if explicitly needed (like top-down view).
+
+Manage cameras using a CameraManager class:
+
+Holds all camera objects for the current page
+
+Handles switching logic and keyboard binding
+
+Handles localStorage read/write
+
+Optional: Displays current camera name in a small HUD overlay when switching
+
+Use modular ES6 imports so that camera management is reusable between pages.
+
+Each page should only initialize the cameras relevant to it.
+
+Car-following cameras (like chase, front_wing) should attach to the selected car’s object in the scene.
+
+Helper camera can be a free-fly debug camera with OrbitControls.
+
+5. Expected Output
+
+Updated index.html, simulation.html, and path.html scripts with correct camera initialization, switching logic, and car selection (for index).
+
+A shared file cameraManager.js that:
+
+Initializes cameras based on page config
+
+Handles keyboard shortcuts
+
+Saves/loads from localStorage
+
+Code should be fully commented, clean, and optimized for performance.
+
+💡 Example Keyboard Mapping for index.html:
+
+1 → Chase Camera
+
+2 → Top Camera
+
+3 → Bottom Camera
+
+4 → T_Cam
+
+5 → Front_Wing
+
+6 → Helper
+
+C → Cycle cars
+
+H → Toggle helper
+
+💡 Example Keyboard Mapping for simulation.html:
+
+1 → Chase Camera
+
+2 → Top Camera
+
+3 → Helper
+
+H → Toggle helper
+
+💡 Example Keyboard Mapping for path.html:
+
+1 → Top Camera
+
+2 → Helper
+
+H → Toggle helper
