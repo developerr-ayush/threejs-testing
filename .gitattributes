@@ -4,4 +4,7 @@ public/models/mclaren_2021.glb filter=lfs diff=lfs merge=lfs -text
 public/models/mclaren_2022.glb filter=lfs diff=lfs merge=lfs -text
 public/models/red_bull.glb filter=lfs diff=lfs merge=lfs -text
 public/models/track.glb filter=lfs diff=lfs merge=lfs -text
+/public/modals/*.glb filter=lfs diff=lfs merge=lfs -text
+/public/models/*.glb filter=lfs diff=lfs merge=lfs -text
+/public/models/* filter=lfs diff=lfs merge=lfs -text
 /public/* filter=lfs diff=lfs merge=lfs -text

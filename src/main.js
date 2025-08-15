@@ -95,20 +95,9 @@ const carCurrentPositions = carPositions.map(
         o.receiveShadow = true;
       }
     });
-
-    // FIX: Correct the model's Z-up orientation to Three.js's Y-up.
-    // We rotate the model itself once, then animate its parent group.
-    car.rotation.x = -Math.PI / 2;
-
-    // The wrapper will handle all future position and rotation.
-    const carWrapper = new THREE.Group();
-    carWrapper.add(car);
-
-    carWrapper.position.copy(carCurrentPositions[i] || new THREE.Vector3());
-    scene.add(carWrapper);
-
-    // The array of objects we animate now contains the wrappers.
-    return carWrapper;
+    car.position.copy(carCurrentPositions[i] || new THREE.Vector3());
+    scene.add(car);
+    return car;
   });
 
   // Create GUI controls
