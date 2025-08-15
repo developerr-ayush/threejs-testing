@@ -10,6 +10,7 @@ import {
   getFollowCameraTransform,
   createHelperCamera,
 } from "./cameras.js";
+import { createHUD, updateHUD, resizeHUD } from "./hud.js";
 import {
   MODEL_PATHS,
   carPositions,
@@ -21,6 +22,7 @@ import {
   gameplayConfig,
   kinematicMovement,
   keyboardControls,
+  f1CarSpecs,
 } from "./config.js";
 import {
   createPhysicsWorld,
@@ -75,7 +77,11 @@ const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
 const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
 const helperCamera = createHelperCamera(window.innerWidth, window.innerHeight);
 let activeCamera = mainCamera; // switchable between follow and helper
-let followMode = "top"; // "top" | "chase"
+let followMode = "top"; // "top" | "chase" | "bottom" | "t_cam" | "front_wing"
+
+// HUD
+const { hudScene, hudCamera, elements: hudElements } = createHUD();
+let showHUD = true;
 
 // Helper camera controls (free navigation)
 const helperControls = new OrbitControls(helperCamera, renderer.domElement);
@@ -188,10 +194,24 @@ const carCurrentPositions = carPositions.map(
       activeCamera = v === "Helper Camera" ? helperCamera : mainCamera;
     });
   camFolder
-    .add(camState, "followMode", ["Top", "Chase"])
+    .add(camState, "followMode", [
+      "Top",
+      "Chase",
+      "Bottom",
+      "T-Cam",
+      "Front Wing",
+    ])
     .name("Follow Mode")
     .onChange((v) => {
-      followMode = v.toLowerCase();
+      // Convert UI labels to config keys
+      const modeMap = {
+        Top: "top",
+        Chase: "chase",
+        Bottom: "bottom",
+        "T-Cam": "t_cam",
+        "Front Wing": "front_wing",
+      };
+      followMode = modeMap[v] || "top";
     });
   let axesHelper = null;
   let gridHelper = null;
@@ -339,6 +359,7 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   setCameraAspect(mainCamera, window.innerWidth / window.innerHeight);
   setCameraAspect(helperCamera, window.innerWidth / window.innerHeight);
+  resizeHUD(hudCamera, hudElements);
 }
 window.addEventListener("resize", onWindowResize);
 
@@ -402,33 +423,99 @@ function animate(time) {
             );
           });
         } else {
-          // Kinematic controls when physics is off
-          const moveDir = new THREE.Vector3();
-          const forward = keyState[keyboardControls.forward] ? 1 : 0;
-          const backward = keyState[keyboardControls.backward] ? 1 : 0;
-          const left = keyState[keyboardControls.left] ? 1 : 0;
-          const right = keyState[keyboardControls.right] ? 1 : 0;
-          const yawLeft = keyState[keyboardControls.yawLeft] ? 1 : 0;
-          const yawRight = keyState[keyboardControls.yawRight] ? 1 : 0;
+          // Kinematic controller with acceleration, drag, and optional strafing (hold Shift)
+          if (!car.userData.velocity)
+            car.userData.velocity = new THREE.Vector3();
+          const vel = car.userData.velocity;
 
-          // Yaw rotation
-          car.rotation.y +=
-            (yawLeft - yawRight) * kinematicMovement.yawSpeed * delta;
+          const isForward = !!keyState[keyboardControls.forward];
+          const isBackward = !!keyState[keyboardControls.backward];
+          const isLeft = !!keyState[keyboardControls.left];
+          const isRight = !!keyState[keyboardControls.right];
+          const yawLeft = !!keyState[keyboardControls.yawLeft];
+          const yawRight = !!keyState[keyboardControls.yawRight];
+          const isStrafe = !!keyState[keyboardControls.modifierStrafe];
 
-          // Move along car's local axes
-          const forwardSpeed =
-            (forward - backward) * kinematicMovement.forwardSpeed * delta;
-          const strafeSpeed =
-            (right - left) * kinematicMovement.strafeSpeed * delta;
+          // Steering with A/D (unless strafing)
+          if (!isStrafe) {
+            const steer = (yawLeft ? 1 : 0) - (yawRight ? 1 : 0);
+            car.rotation.y += steer * kinematicMovement.yawSpeed * delta;
+          }
+
           const quat = new THREE.Quaternion().setFromEuler(car.rotation);
-          const forwardVec = new THREE.Vector3(0, 0, 1)
-            .applyQuaternion(quat)
-            .multiplyScalar(forwardSpeed);
-          const rightVec = new THREE.Vector3(1, 0, 0)
-            .applyQuaternion(quat)
-            .multiplyScalar(strafeSpeed);
-          moveDir.copy(forwardVec).add(rightVec);
-          car.position.add(moveDir);
+          const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
+          const rightV = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+          const accel = new THREE.Vector3();
+          if (isForward)
+            accel.addScaledVector(fwd, kinematicMovement.accelForward);
+          if (isBackward)
+            accel.addScaledVector(fwd, -kinematicMovement.accelForward * 0.7);
+          if (isStrafe) {
+            if (isRight)
+              accel.addScaledVector(rightV, kinematicMovement.accelStrafe);
+            if (isLeft)
+              accel.addScaledVector(rightV, -kinematicMovement.accelStrafe);
+          }
+          vel.addScaledVector(accel, delta);
+
+          // Drag / braking
+          const drag =
+            isBackward && !isForward
+              ? kinematicMovement.brakeDrag
+              : kinematicMovement.drag;
+          vel.addScaledVector(vel, -drag * delta);
+
+          // Clamp speed
+          const speed = vel.length();
+          if (speed > kinematicMovement.maxSpeed) {
+            vel.multiplyScalar(kinematicMovement.maxSpeed / speed);
+          }
+
+          // Integrate
+          car.position.addScaledVector(vel, delta);
+
+          // Calculate F1 car data for HUD
+          const speedKph = speed * 3.6; // Convert units/sec to km/h
+          const maxSpeedRatio = speedKph / f1CarSpecs.maxSpeedKph;
+
+          // Simulate RPM based on speed
+          const rpm =
+            f1CarSpecs.idleRPM +
+            (f1CarSpecs.maxRPM - f1CarSpecs.idleRPM) *
+              Math.min(1, maxSpeedRatio * 1.2);
+
+          // Simulate gear based on RPM and speed
+          let gear = 0; // Neutral
+          if (speedKph > 0) {
+            gear =
+              1 +
+              Math.min(
+                f1CarSpecs.gears - 1,
+                Math.floor(maxSpeedRatio * f1CarSpecs.gears)
+              );
+          }
+
+          // Update HUD
+          if (showHUD) {
+            updateHUD(hudElements, { speed: speedKph, rpm, gear });
+          }
+
+          // Debug log while moving (10 Hz)
+          if (speed > 0.5) {
+            car.userData._logT = (car.userData._logT || 0) + delta;
+            if (car.userData._logT > 0.1) {
+              car.userData._logT = 0;
+              console.log(
+                `Car1 pos: x=${car.position.x.toFixed(
+                  2
+                )}, y=${car.position.y.toFixed(2)}, z=${car.position.z.toFixed(
+                  2
+                )}, yaw=${car.rotation.y.toFixed(2)}, speed=${speedKph.toFixed(
+                  1
+                )} km/h, gear=${gear}`
+              );
+            }
+          }
         }
       } else {
         // Lerp other cars to target positions from GUI
@@ -460,15 +547,37 @@ function animate(time) {
 
   helperControls.update();
 
+  // Render main scene with active camera
   renderer.render(scene, activeCamera);
+
+  // Render HUD if enabled
+  if (showHUD && activeCamera !== helperCamera) {
+    // Don't clear the depth buffer so HUD renders on top
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    renderer.render(hudScene, hudCamera);
+    renderer.autoClear = true;
+  }
 
   requestAnimationFrame(animate);
 }
 
-// Toggle follow camera mode with key 'c'
+// Keyboard controls for camera and HUD
 window.addEventListener("keydown", (e) => {
+  // Toggle follow camera mode with key 'c'
   if (e.key.toLowerCase() === "c") {
-    followMode = followMode === "top" ? "chase" : "top";
+    // Cycle through camera modes
+    const modes = ["top", "chase", "bottom", "t_cam", "front_wing"];
+    const currentIndex = modes.indexOf(followMode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    followMode = modes[nextIndex];
     console.log(`Camera mode: ${followMode}`);
   }
+
+  // Toggle HUD with 'h' key
+  if (e.key.toLowerCase() === "h") {
+    showHUD = !showHUD;
+    console.log(`HUD: ${showHUD ? "visible" : "hidden"}`);
+  }
 });
+s

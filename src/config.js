@@ -3,10 +3,11 @@ import racePathData from "./racepath.json";
 export const keyboardControls = {
   forward: "w",
   backward: "s",
-  left: "a", // strafe left
-  right: "d", // strafe right
-  yawLeft: "q",
-  yawRight: "e",
+  left: "a",
+  right: "d",
+  yawLeft: "a", // A/D turn (steer)
+  yawRight: "d",
+  modifierStrafe: "shift", // hold to strafe with A/D
   force: 20,
   torque: 10,
   turnSpeed: 2.5, // radians per second
@@ -34,6 +35,15 @@ export const cameraConfig = {
 export const followCameraConfig = {
   top: { offset: { x: 0, y: 12, z: 0 }, lookOffset: { x: 0, y: 0, z: 0 } },
   chase: { offset: { x: 0, y: 5, z: -10 }, lookOffset: { x: 0, y: 2, z: 6 } },
+  bottom: { offset: { x: 0, y: -1, z: 0 }, lookOffset: { x: 0, y: 0, z: 3 } },
+  t_cam: {
+    offset: { x: 0, y: 0.8, z: -0.2 },
+    lookOffset: { x: 0, y: 0.5, z: 2 },
+  }, // F1 T-cam (onboard)
+  front_wing: {
+    offset: { x: 0, y: 0.3, z: 3 },
+    lookOffset: { x: 0, y: 0.5, z: 10 },
+  }, // Front wing cam
 };
 
 export const gameplayConfig = {
@@ -41,9 +51,29 @@ export const gameplayConfig = {
 };
 
 export const kinematicMovement = {
-  forwardSpeed: 15,
-  strafeSpeed: 10,
-  yawSpeed: 2.5, // radians/sec
+  accelForward: 60,
+  accelStrafe: 40,
+  maxSpeed: 75,
+  drag: 2.5,
+  brakeDrag: 6.0,
+  yawSpeed: 2.8, // radians/sec
+};
+
+// F1 car specifications (for HUD and physics)
+export const f1CarSpecs = {
+  maxRPM: 15000,
+  idleRPM: 4000,
+  redlineRPM: 12000,
+  gears: 8,
+  maxSpeedKph: 360,
+  maxTorque: 770, // Nm
+  downforceCoefficient: 5.0,
+  dragCoefficient: 1.0,
+  tyreCompounds: ["Soft", "Medium", "Hard", "Intermediate", "Wet"],
+  defaultTyreCompound: "Medium",
+  engineModes: ["Standard", "Rich", "Lean"],
+  defaultEngineMode: "Standard",
+  brakeBias: 0.5, // 0.0 = full rear, 1.0 = full front
 };
 
 export const orbitControlsConfig = {
@@ -57,10 +87,10 @@ export const orbitControlsConfig = {
 // Parameters for car target positions (world space)
 export const carPositions = [
   // Car 1 spawn aligned with your provided grid location (approx.)
-  { x: -6.64, y: 2, z: -25.11 },
-  { x: -25, y: 2, z: -30 },
-  { x: -29, y: 2, z: -35 },
-  { x: -25, y: 2, z: -35 },
+  { x: -6.64, y: 0.1, z: -25.11 },
+  { x: -25, y: 0.1, z: -30 },
+  { x: -29, y: 0.1, z: -35 },
+  { x: -25, y: 0.1, z: -35 },
 ];
 
 // Default spawn for Car 1 (used by Reset/auto-respawn)
