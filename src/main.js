@@ -98,7 +98,7 @@ const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
 const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
 const helperCamera = createHelperCamera(window.innerWidth, window.innerHeight);
 let activeCamera = helperCamera; // switchable between follow and helper
-let followMode = "top"; // "top" | "chase" | "bottom" | "t_cam" | "front_wing"
+let followMode = "chase"; // "top" | "chase" | "bottom" | "t_cam" | "front_wing"
 
 // HUD
 const { hudScene, hudCamera, elements: hudElements } = createHUD();
