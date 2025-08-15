@@ -580,4 +580,3 @@ window.addEventListener("keydown", (e) => {
     console.log(`HUD: ${showHUD ? "visible" : "hidden"}`);
   }
 });
-s
