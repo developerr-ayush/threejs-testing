@@ -51,12 +51,12 @@ export const gameplayConfig = {
 };
 
 export const kinematicMovement = {
-  accelForward: 60,
-  accelStrafe: 40,
-  maxSpeed: 75,
+  accelForward: 300,
+  accelStrafe: 300,
+  maxSpeed: 500,
   drag: 2.5,
   brakeDrag: 6.0,
-  yawSpeed: 2.8, // radians/sec
+  yawSpeed: 4, // radians/sec
 };
 
 // F1 car specifications (for HUD and physics)
