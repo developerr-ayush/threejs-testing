@@ -51,8 +51,8 @@ export const gameplayConfig = {
 };
 
 export const kinematicMovement = {
-  accelForward: 300,
-  accelStrafe: 300,
+  accelForward: 100,
+  accelStrafe: 100,
   maxSpeed: 500,
   drag: 2.5,
   brakeDrag: 6.0,
@@ -100,9 +100,9 @@ export const car1Spawn = {
 };
 
 export const racePathPoints = racePathData.racePathPoints.map((p) => ({
-  x: p[0] * 0.1,
-  y: p[1] * 0.1,
-  z: p[2] * 0.1,
+  x: p[0],
+  y: p[1],
+  z: p[2],
 }));
 
 // Tuning

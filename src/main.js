@@ -34,13 +34,34 @@ import {
   updateCarControls,
   keyState,
 } from "./controls.js";
+import { updateCarAI } from "./carAI.js";
+import {
+  initializePathEditor,
+  exportPathToJSON,
+  clearPath,
+} from "./pathEditor.js";
+import {
+  initializeCreatePath,
+  setOverlayLineForRecording,
+  startCreatePathRecording,
+  stopCreatePathRecording,
+  updateCreatePath,
+  getSavedPathNames,
+  getSavedPath,
+  deleteSavedPath,
+  createLineFromSavedPath,
+} from "./createPath.js";
+
+// App mode: 'index' | 'simulation' | 'path'
+const APP_MODE = window.APP_MODE || "index";
 
 // GUI
 const gui = new GUI();
 
 // App state
 const controlState = {
-  raceMode: false,
+  // Default: cars follow path on index page
+  raceMode: APP_MODE === "index",
   cars: [
     { speed: 0.01, progress: 0 },
     { speed: 0.011, progress: 0.25 },
@@ -54,7 +75,7 @@ const racePath = new THREE.CatmullRomCurve3(
   racePathPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z))
 );
 racePath.curveType = "catmullrom";
-racePath.closed = true;
+racePath.closed = false;
 
 // For interactive control from the browser console
 window.carTargets = carPositions;
@@ -76,7 +97,7 @@ const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
 // Cameras
 const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
 const helperCamera = createHelperCamera(window.innerWidth, window.innerHeight);
-let activeCamera = mainCamera; // switchable between follow and helper
+let activeCamera = helperCamera; // switchable between follow and helper
 let followMode = "top"; // "top" | "chase" | "bottom" | "t_cam" | "front_wing"
 
 // HUD
@@ -100,6 +121,7 @@ let carObjects = []; // Object3D for each car
 let carBodies = []; // Physics bodies for each car
 let trackObject = null;
 let racePathLine = null; // Visualizer for the race path
+let perCarPaths = []; // Optional per-car overrides built from saved paths
 const raycaster = new THREE.Raycaster();
 const down = new THREE.Vector3(0, -1, 0);
 
@@ -214,7 +236,7 @@ const carCurrentPositions = carPositions.map(
   const camFolder = gui.addFolder("Camera");
   const camState = {
     active: "Follow Car 1",
-    followMode: "Top",
+    followMode: "Chase",
     axesHelper: false,
     gridHelper: false,
   };
@@ -222,7 +244,7 @@ const carCurrentPositions = carPositions.map(
     .add(camState, "active", ["Follow Car 1", "Helper Camera"])
     .name("Active Camera")
     .onChange((v) => {
-      activeCamera = v === "Helper Camera" ? helperCamera : mainCamera;
+      activeCamera = v === "Helper Camera" ? mainCamera : helperCamera;
     });
   camFolder
     .add(camState, "followMode", [
@@ -387,12 +409,12 @@ const carCurrentPositions = carPositions.map(
   const pathState = {
     visible: true,
     color: 0xff0000,
-    yOffset: 0,
-    scale: 0.24,
-    rotationY: -0.0051,
-    rotationX: -1.57159,
-    xOffset:16.4 ,
-    zOffset: -30.3,
+    yOffset: 0.2,
+    scale: 1,
+    rotationY: 0,
+    rotationX: 0,
+    xOffset: 0,
+    zOffset: 0,
   };
   // Initialize line with state values
   if (racePathLine) {
@@ -455,6 +477,149 @@ const carCurrentPositions = carPositions.map(
     });
   pathFolder.open();
 
+  // Path creator UI
+  const creatorFolder = gui.addFolder("Path Creator");
+  const creatorState = {
+    export: exportPathToJSON,
+    clear: clearPath,
+  };
+  creatorFolder.add(creatorState, "export").name("Export to Console/Clipboard");
+  creatorFolder.add(creatorState, "clear").name("Clear Path");
+  if (APP_MODE === "path") creatorFolder.open();
+  else creatorFolder.close();
+
+  // Recording while driving UI
+  const recordFolder = gui.addFolder("Drive-to-Create Path");
+  const recordState = {
+    name: "car-1-path",
+    isRecording: false,
+    closeLoop: true,
+    resampleCount: 800,
+    speed: controlState.cars[0]?.speed ?? 0.01,
+    start: () => {
+      const ok = startCreatePathRecording({
+        name: recordState.name,
+        speed: recordState.speed,
+        kinematicSnapshot: { ...kinematicMovement },
+      });
+      if (ok) {
+        recordState.isRecording = true;
+        console.log("Recording started for", recordState.name);
+      }
+    },
+    stop: () => {
+      const saved = stopCreatePathRecording({
+        closeLoop: recordState.closeLoop,
+        resampleCount: recordState.resampleCount,
+      });
+      recordState.isRecording = false;
+      if (saved) {
+        console.log("Saved path:", saved);
+      }
+      refreshSavedList();
+    },
+  };
+  recordFolder.add(recordState, "name").name("Path Name");
+  recordFolder.add(recordState, "speed", 0, 0.1, 0.001).name("Default Speed");
+  recordFolder.add(recordState, "closeLoop").name("Close Loop");
+  recordFolder.add(recordState, "resampleCount", 50, 2000, 1).name("Samples");
+  recordFolder.add(recordState, "start").name("Start Recording");
+  recordFolder.add(recordState, "stop").name("Stop & Save");
+  if (APP_MODE === "simulation") recordFolder.open();
+  else recordFolder.close();
+
+  // Saved paths UI per car
+  const savedPathsFolder = gui.addFolder("Assign Saved Paths");
+  const savedState = {
+    assigned: [null, null, null, null],
+    options: ["(none)", ...getSavedPathNames()],
+  };
+  const savedControllers = [];
+
+  function buildSavedControllers() {
+    // Remove existing controllers from folder
+    while (savedPathsFolder.controllers.length) {
+      savedPathsFolder.remove(savedPathsFolder.controllers[0]);
+    }
+    savedControllers.length = 0;
+
+    for (let i = 0; i < controlState.cars.length; i++) {
+      const label = `Car ${i + 1}`;
+      const proxy = { choice: savedState.assigned[i] || "(none)" };
+      const ctrl = savedPathsFolder
+        .add(proxy, "choice", savedState.options)
+        .name(label)
+        .onChange((val) => {
+          savedState.assigned[i] = val === "(none)" ? null : val;
+          rebuildPerCarPaths();
+        });
+      savedControllers.push({ ctrl, proxyIndex: i });
+    }
+
+    savedPathsFolder
+      .add({ refresh: refreshSavedList }, "refresh")
+      .name("Refresh List");
+  }
+
+  function refreshSavedList() {
+    savedState.options = ["(none)", ...getSavedPathNames()];
+    // Update options on existing controllers if present
+    if (savedControllers.length) {
+      for (const { ctrl } of savedControllers) {
+        if (typeof ctrl.options === "function")
+          ctrl.options(savedState.options);
+      }
+    } else {
+      buildSavedControllers();
+    }
+  }
+
+  let perCarPaths = [];
+  function rebuildPerCarPaths() {
+    // Remove any prior lines from scene
+    perCarPaths.forEach((p) => {
+      if (p && p.line) scene.remove(p.line);
+    });
+    perCarPaths = [];
+
+    for (let i = 0; i < controlState.cars.length; i++) {
+      const name = savedState.assigned[i];
+      if (!name) {
+        perCarPaths[i] = null;
+        continue;
+      }
+      const saved = getSavedPath(name);
+      if (!saved) {
+        console.warn("Saved path not found:", name);
+        perCarPaths[i] = null;
+        continue;
+      }
+      const created = createLineFromSavedPath(saved);
+      if (created && created.line) {
+        scene.add(created.line);
+        perCarPaths[i] = created;
+        // Sync speed with saved params if present
+        if (saved.params && typeof saved.params.speed === "number") {
+          if (controlState.cars[i])
+            controlState.cars[i].speed = saved.params.speed;
+        }
+      } else {
+        perCarPaths[i] = null;
+      }
+    }
+  }
+
+  buildSavedControllers();
+  refreshSavedList();
+  if (APP_MODE === "index") savedPathsFolder.open();
+
+  // Console helpers for saved paths
+  window.savedPaths = {
+    list: () => getSavedPathNames(),
+    get: (name) => getSavedPath(name),
+    delete: (name) => deleteSavedPath(name),
+  };
+
   // Path recorder helpers in console
   window.exportRecordedPathJSON = () => {
     const arr = pathRecorder.points.map((p) => [p.x, p.y, p.z]);
@@ -485,6 +650,10 @@ const carCurrentPositions = carPositions.map(
     return json;
   };
 
+  initializePathEditor(scene, helperCamera, renderer.domElement);
+  initializeCreatePath(() => carObjects[0]?.position?.clone());
+  setOverlayLineForRecording(racePathLine);
+
   animate(0);
 })();
 
@@ -510,27 +679,23 @@ function animate(time) {
 
   // Animate cars based on the current mode
   if (controlState.raceMode) {
-    // RACE MODE: Cars follow the racePath
-    for (let i = 0; i < carObjects.length; i++) {
-      const car = carObjects[i];
-      const body = carBodies[i];
-      const state = controlState.cars[i];
-      if (!car || !state || !body) continue;
-
-      // Update progress and loop around the track
-      state.progress = (state.progress + state.speed * delta) % 1;
-
-      // Set position from the curve
-      const newPos = racePath.getPointAt(state.progress);
-      car.position.copy(newPos);
-      body.position.copy(newPos);
-
-      // Set orientation from the curve tangent
-      const tangent = racePath.getTangentAt(state.progress).normalize();
-      const lookAtPosition = new THREE.Vector3().copy(newPos).add(tangent);
-      car.lookAt(lookAtPosition);
-      body.quaternion.copy(car.quaternion);
-      snapCarToTrack(car);
+    try {
+      updateCarAI(
+        carObjects,
+        carBodies,
+        controlState.cars,
+        racePath,
+        racePathLine,
+        delta,
+        perCarPaths
+      );
+      // Snap cars to the track surface after AI update
+      for (const car of carObjects) {
+        if (car) snapCarToTrack(car);
+      }
+    } catch (error) {
+      console.error("An error occurred during car AI update:", error);
+      controlState.raceMode = false;
     }
   } else {
     // PHYSICS-DRIVEN MODE
@@ -670,6 +835,9 @@ function animate(time) {
       }
     }
   }
+
+  // Update path recording each frame (world mode)
+  updateCreatePath(delta);
 
   // Follow camera for car 1 in non-race mode
   if (!controlState.raceMode) {

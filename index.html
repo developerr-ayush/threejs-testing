@@ -1,16 +1,54 @@
 <!doctype html>
 <html lang="en">
+
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Three.js Multi-View</title>
+    <title>Race Simulation</title>
     <style>
-      html, body, #app { height: 100%; margin: 0; background: #111; overflow: hidden; }
-      canvas { display: block; }
+      html,
+      body,
+      #app {
+        height: 100%;
+        margin: 0;
+        background: #111;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .nav {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        z-index: 10;
+      }
+
+      .nav a {
+        color: #ccc;
+        margin-right: 8px;
+        text-decoration: none;
+      }
+
+      .nav a:hover {
+        color: #fff;
+      }
     </style>
   </head>
+
   <body>
+    <div class="nav">
+      <a href="/index.html">simulation</a>
+      <a href="/simulation.html">drive-to-create</a>
+      <a href="/path.html">manual-path</a>
+    </div>
     <div id="app"></div>
+    <script>
+      window.APP_MODE = 'index';
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
+
 </html>
