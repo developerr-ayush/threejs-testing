@@ -1,0 +1,29 @@
+{
+  "name": "threejs-testing",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/developerr-ayush/threejs-testing.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/developerr-ayush/threejs-testing/issues"
+  },
+  "homepage": "https://github.com/developerr-ayush/threejs-testing#readme",
+  "description": "",
+  "devDependencies": {
+    "vite": "^7.1.2"
+  },
+  "dependencies": {
+    "three": "^0.179.1"
+  },
+  "type": "module"
+}
