@@ -10,6 +10,11 @@ import {
   movementLerp,
   orbitControlsConfig,
 } from "./config.js";
+import {
+  createPhysicsWorld,
+  createGroundPlane,
+  createCarBody,
+} from "./physics.js";
 
 // GUI
 const gui = new GUI();
@@ -49,6 +54,9 @@ app.appendChild(renderer.domElement);
 // Scene
 const scene = createScene();
 
+// Physics
+const world = createPhysicsWorld();
+
 // Cameras
 const mainCamera = createMainCamera(window.innerWidth, window.innerHeight);
 
@@ -67,6 +75,7 @@ controls.update();
 
 // State for cars
 let carObjects = []; // Object3D for each car
+let carBodies = []; // Physics bodies for each car
 let trackObject = null;
 
 // For smooth motion, we store current positions separately and LERP toward targets
@@ -99,13 +108,23 @@ const carCurrentPositions = carPositions.map(
     });
     car.position.copy(carCurrentPositions[i] || new THREE.Vector3());
     scene.add(car);
+
+    // Create a physics body for the car
+    const carBody = createCarBody(carPositions[i]);
+    world.addBody(carBody);
+    carBodies.push(carBody);
+
     return car;
   });
+
+  // Create ground plane
+  createGroundPlane(world);
 
   // Create GUI controls
   gui.add(controlState, "raceMode").name("Enable Race Mode");
 
   const manualFolder = gui.addFolder("Manual Controls");
+  manualFolder.close(); // Initially closed as physics is now driving motion
   carPositions.forEach((pos, i) => {
     const folder = manualFolder.addFolder(`Car ${i + 1}`);
     folder.add(pos, "x", -100, 100, 0.1).name("Position X");
@@ -135,6 +154,9 @@ function animate(time) {
   const delta = Math.min((time - lastTime) / 1000, 1 / 20);
   lastTime = time;
 
+  // Step the physics world
+  world.step(1 / 60, delta, 3);
+
   // Animate cars based on the current mode
   if (controlState.raceMode) {
     // RACE MODE: Cars follow the racePath
@@ -156,24 +178,15 @@ function animate(time) {
       car.lookAt(lookAtPosition);
     }
   } else {
-    // MANUAL MODE: Cars move toward slider positions
+    // PHYSICS-DRIVEN MODE
     for (let i = 0; i < carObjects.length; i++) {
       const car = carObjects[i];
-      if (!car) continue;
-      const target = carPositions[i] || carPositions[carPositions.length - 1];
-      const targetVec = new THREE.Vector3(target.x, target.y, target.z);
+      const body = carBodies[i];
+      if (!car || !body) continue;
 
-      // Smoothly move car to target
-      car.position.lerp(targetVec, movementLerp);
-
-      // **FIXED**: Orient the car horizontally towards its target
-      const lookAtTarget = new THREE.Vector3().copy(targetVec);
-      lookAtTarget.y = car.position.y; // Keep the car level
-
-      // Avoid looking at self if already at target
-      if (lookAtTarget.distanceToSquared(car.position) > 0.01) {
-        car.lookAt(lookAtTarget);
-      }
+      // Sync visual object with physics body
+      car.position.copy(body.position);
+      car.quaternion.copy(body.quaternion);
     }
   }
 

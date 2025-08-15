@@ -1,3 +1,9 @@
+export const physicsConfig = {
+  gravity: { x: 0, y: -9.82, z: 0 },
+  carMass: 1,
+  groundFriction: 0.3,
+};
+
 export const cameraConfig = {
   fov: 75,
   aspect: window.innerWidth / window.innerHeight,

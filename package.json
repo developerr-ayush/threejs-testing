@@ -23,8 +23,10 @@
     "vite": "^7.1.2"
   },
   "dependencies": {
+    "cannon-es": "^0.20.0",
     "lil-gui": "^0.20.0",
-    "three": "^0.179.1"
+    "three": "^0.179.1",
+    "three-to-cannon": "^5.0.2"
   },
   "type": "module"
 }
