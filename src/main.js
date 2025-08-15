@@ -99,6 +99,28 @@ initializeKeyboardControls();
 let carObjects = []; // Object3D for each car
 let carBodies = []; // Physics bodies for each car
 let trackObject = null;
+const raycaster = new THREE.Raycaster();
+const down = new THREE.Vector3(0, -1, 0);
+
+// Path recorder for manual driving
+const pathRecorder = {
+  recording: false,
+  points: [],
+  minSampleDistance: 0.75, // meters between samples
+};
+
+function getGroundYAt(x, z) {
+  if (!trackObject) return 0;
+  raycaster.set(new THREE.Vector3(x, 1000, z), down);
+  const hits = raycaster.intersectObject(trackObject, true);
+  if (hits && hits.length > 0) return hits[0].point.y;
+  return 0;
+}
+
+function snapCarToTrack(car, yOffset = physicsConfig.suspensionOffset) {
+  const gy = getGroundYAt(car.position.x, car.position.z);
+  car.position.y = gy + yOffset;
+}
 
 // For smooth motion, we store current positions separately and LERP toward targets
 const carCurrentPositions = carPositions.map(
@@ -147,6 +169,7 @@ const carCurrentPositions = carPositions.map(
       // Ensure cars face along +Z (down the straight)
       car.rotation.y = Math.PI / 2;
     }
+    snapCarToTrack(car);
     scene.add(car);
 
     // Create a physics body for the car if physics enabled
@@ -351,6 +374,36 @@ const carCurrentPositions = carPositions.map(
   });
   raceFolder.open();
 
+  // Path recorder helpers in console
+  window.exportRecordedPathJSON = () => {
+    const arr = pathRecorder.points.map((p) => [p.x, p.y, p.z]);
+    const json = JSON.stringify({ racePathPoints: arr }, null, 2);
+    console.log(json);
+    return json;
+  };
+  window.clearRecordedPath = () => {
+    pathRecorder.points.length = 0;
+    console.log("Recorder cleared");
+  };
+  window.buildClosedPathFromRecording = (sampleCount = 800) => {
+    if (pathRecorder.points.length < 4) {
+      console.warn("Not enough points recorded.");
+      return null;
+    }
+    // Close the loop by connecting end to start
+    const pts = pathRecorder.points.slice();
+    pts.push(pts[0].clone());
+    const curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom");
+    const spaced = curve.getSpacedPoints(sampleCount - 1);
+    const json = JSON.stringify(
+      { racePathPoints: spaced.map((p) => [p.x, p.y, p.z]) },
+      null,
+      2
+    );
+    console.log(json);
+    return json;
+  };
+
   animate(0);
 })();
 
@@ -396,6 +449,7 @@ function animate(time) {
       const lookAtPosition = new THREE.Vector3().copy(newPos).add(tangent);
       car.lookAt(lookAtPosition);
       body.quaternion.copy(car.quaternion);
+      snapCarToTrack(car);
     }
   } else {
     // PHYSICS-DRIVEN MODE
@@ -473,6 +527,7 @@ function animate(time) {
 
           // Integrate
           car.position.addScaledVector(vel, delta);
+          snapCarToTrack(car);
 
           // Calculate F1 car data for HUD
           const speedKph = speed * 3.6; // Convert units/sec to km/h
@@ -529,6 +584,7 @@ function animate(time) {
             new THREE.Vector3(target.x, target.y, target.z),
             movementLerp
           );
+          snapCarToTrack(car);
         }
       }
     }
@@ -559,6 +615,18 @@ function animate(time) {
     renderer.autoClear = true;
   }
 
+  // Record path while driving Car 1 (non-race mode)
+  if (!controlState.raceMode && pathRecorder.recording && carObjects[0]) {
+    const p = carObjects[0].position;
+    const last = pathRecorder.points[pathRecorder.points.length - 1];
+    if (
+      !last ||
+      p.distanceToSquared(last) > pathRecorder.minSampleDistance ** 2
+    ) {
+      pathRecorder.points.push(p.clone());
+    }
+  }
+
   requestAnimationFrame(animate);
 }
 
@@ -578,5 +646,15 @@ window.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "h") {
     showHUD = !showHUD;
     console.log(`HUD: ${showHUD ? "visible" : "hidden"}`);
+  }
+
+  // Toggle path recording with 'r'
+  if (e.key.toLowerCase() === "r") {
+    pathRecorder.recording = !pathRecorder.recording;
+    console.log(
+      `Recorder: ${pathRecorder.recording ? "started" : "stopped"} | points=${
+        pathRecorder.points.length
+      }`
+    );
   }
 });
