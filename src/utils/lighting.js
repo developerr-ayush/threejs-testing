@@ -1,151 +1,80 @@
+/**
+ * Lighting utilities for Three.js
+ */
 import * as THREE from "three";
+import CONFIG from "../config.js";
 
-// Default lighting configuration
-const defaultLightingConfig = {
-  ambient: {
-    color: 0xffffff,
-    intensity: 0.5,
-    enabled: true,
-  },
-  directional: {
-    color: 0xffffff,
-    intensity: 1.0,
-    position: { x: 50, y: 100, z: 50 },
-    castShadow: true,
-    shadowMapSize: 2048,
-    shadowBias: -0.0001,
-    shadowCameraSize: 100,
-    enabled: true,
-  },
-  spotlights: [
-    {
-      color: 0xffffff,
-      intensity: 0.8,
-      position: { x: -50, y: 50, z: -50 },
-      target: { x: 0, y: 0, z: 0 },
-      angle: Math.PI / 6,
-      penumbra: 0.2,
-      decay: 1.5,
-      distance: 500,
-      castShadow: true,
-      shadowMapSize: 1024,
-      enabled: false,
-    },
-    {
-      color: 0xffffff,
-      intensity: 0.6,
-      position: { x: 50, y: 50, z: -50 },
-      target: { x: 0, y: 0, z: 0 },
-      angle: Math.PI / 6,
-      penumbra: 0.2,
-      decay: 1.5,
-      distance: 500,
-      castShadow: true,
-      shadowMapSize: 1024,
-      enabled: false,
-    },
-  ],
-  hemisphereLight: {
-    skyColor: 0x87ceeb,
-    groundColor: 0x404040,
-    intensity: 0.6,
-    enabled: true,
-  },
-  shadowsEnabled: true,
-};
-
-// Store light references for later control
-export const lightRefs = {
-  ambient: null,
-  directional: null,
-  spotlights: [],
-  hemisphere: null,
-  config: { ...defaultLightingConfig },
-};
-
-// Create scene, lights, and environment
-export function createScene(lightingConfig = {}) {
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111111);
-
-  // Merge provided config with defaults
+/**
+ * Creates a complete lighting setup based on config
+ * @param {Object} options - Override options for the lighting setup
+ * @returns {Object} Object containing all created lights and references
+ */
+export function createLighting(options = {}) {
   const config = {
-    ...defaultLightingConfig,
-    ...lightingConfig,
-    directional: {
-      ...defaultLightingConfig.directional,
-      ...(lightingConfig.directional || {}),
-    },
-    ambient: {
-      ...defaultLightingConfig.ambient,
-      ...(lightingConfig.ambient || {}),
-    },
-    hemisphereLight: {
-      ...defaultLightingConfig.hemisphereLight,
-      ...(lightingConfig.hemisphereLight || {}),
-    },
-    spotlights: lightingConfig.spotlights || defaultLightingConfig.spotlights,
+    ...CONFIG.lighting,
+    ...options,
   };
 
-  // Store the config for later reference
-  Object.assign(lightRefs.config, config);
+  const lights = {
+    ambient: null,
+    directional: null,
+    spotlights: [],
+    hemisphere: null,
+    config: { ...config },
+  };
 
-  // Ambient light to softly illuminate all objects
+  // Create ambient light
   if (config.ambient.enabled) {
-    const ambient = new THREE.AmbientLight(
+    lights.ambient = new THREE.AmbientLight(
       config.ambient.color,
       config.ambient.intensity
     );
-    scene.add(ambient);
-    lightRefs.ambient = ambient;
   }
 
-  // Hemisphere light for sky/ground gradient lighting
+  // Create hemisphere light
   if (config.hemisphereLight.enabled) {
-    const hemiLight = new THREE.HemisphereLight(
+    lights.hemisphere = new THREE.HemisphereLight(
       config.hemisphereLight.skyColor,
       config.hemisphereLight.groundColor,
       config.hemisphereLight.intensity
     );
-    scene.add(hemiLight);
-    lightRefs.hemisphere = hemiLight;
   }
 
-  // Directional light to simulate sun
+  // Create directional light
   if (config.directional.enabled) {
-    const dirLight = new THREE.DirectionalLight(
+    lights.directional = new THREE.DirectionalLight(
       config.directional.color,
       config.directional.intensity
     );
-    dirLight.position.set(
+
+    lights.directional.position.set(
       config.directional.position.x,
       config.directional.position.y,
       config.directional.position.z
     );
-    dirLight.castShadow =
+
+    lights.directional.castShadow =
       config.directional.castShadow && config.shadowsEnabled;
 
     // Configure shadow properties
-    if (dirLight.castShadow) {
+    if (lights.directional.castShadow) {
       const size = config.directional.shadowCameraSize;
-      dirLight.shadow.mapSize.width = config.directional.shadowMapSize;
-      dirLight.shadow.mapSize.height = config.directional.shadowMapSize;
-      dirLight.shadow.camera.left = -size;
-      dirLight.shadow.camera.right = size;
-      dirLight.shadow.camera.top = size;
-      dirLight.shadow.camera.bottom = -size;
-      dirLight.shadow.camera.near = 1;
-      dirLight.shadow.camera.far = 500;
-      dirLight.shadow.bias = config.directional.shadowBias;
+      lights.directional.shadow.mapSize.width =
+        config.directional.shadowMapSize;
+      lights.directional.shadow.mapSize.height =
+        config.directional.shadowMapSize;
+      lights.directional.shadow.camera.left = -size;
+      lights.directional.shadow.camera.right = size;
+      lights.directional.shadow.camera.top = size;
+      lights.directional.shadow.camera.bottom = -size;
+      lights.directional.shadow.camera.near = 1;
+      lights.directional.shadow.camera.far = 500;
+      lights.directional.shadow.bias = config.directional.shadowBias;
     }
-
-    scene.add(dirLight);
-    lightRefs.directional = dirLight;
   }
 
-  // Add spotlights
-  lightRefs.spotlights = [];
-  config.spotlights.forEach((spotConfig, index) => {
+  // Create spotlights
+  config.spotlights.forEach((spotConfig) => {
     if (!spotConfig.enabled) return;
 
     const spotlight = new THREE.SpotLight(
@@ -171,7 +100,6 @@ export function createScene(lightingConfig = {}) {
         spotConfig.target.y,
         spotConfig.target.z
       );
-      scene.add(targetObj);
       spotlight.target = targetObj;
     }
 
@@ -184,38 +112,59 @@ export function createScene(lightingConfig = {}) {
       spotlight.shadow.camera.far = spotConfig.distance;
     }
 
-    scene.add(spotlight);
-    lightRefs.spotlights.push(spotlight);
+    lights.spotlights.push(spotlight);
   });
 
-  return scene;
+  return lights;
 }
 
-// Helper function to update lighting settings at runtime
-export function updateLighting(newSettings = {}) {
-  const config = lightRefs.config;
+/**
+ * Adds all lights from a lighting setup to a scene
+ * @param {THREE.Scene} scene - The scene to add lights to
+ * @param {Object} lights - The lighting setup from createLighting()
+ */
+export function addLightsToScene(scene, lights) {
+  if (lights.ambient) scene.add(lights.ambient);
+  if (lights.hemisphere) scene.add(lights.hemisphere);
+  if (lights.directional) scene.add(lights.directional);
+
+  lights.spotlights.forEach((spotlight) => {
+    scene.add(spotlight);
+    if (spotlight.target && spotlight.target !== scene) {
+      scene.add(spotlight.target);
+    }
+  });
+}
+
+/**
+ * Updates lighting settings at runtime
+ * @param {Object} lights - The lighting setup from createLighting()
+ * @param {Object} newSettings - New settings to apply
+ */
+export function updateLighting(lights, newSettings = {}) {
+  const config = lights.config;
 
   // Update ambient light
-  if (newSettings.ambient && lightRefs.ambient) {
+  if (newSettings.ambient && lights.ambient) {
     Object.assign(config.ambient, newSettings.ambient);
-    lightRefs.ambient.color.set(config.ambient.color);
-    lightRefs.ambient.intensity = config.ambient.intensity;
-    lightRefs.ambient.visible = config.ambient.enabled;
+    lights.ambient.color.set(config.ambient.color);
+    lights.ambient.intensity = config.ambient.intensity;
+    lights.ambient.visible = config.ambient.enabled;
   }
 
   // Update hemisphere light
-  if (newSettings.hemisphereLight && lightRefs.hemisphere) {
+  if (newSettings.hemisphereLight && lights.hemisphere) {
     Object.assign(config.hemisphereLight, newSettings.hemisphereLight);
-    lightRefs.hemisphere.skyColor.set(config.hemisphereLight.skyColor);
-    lightRefs.hemisphere.groundColor.set(config.hemisphereLight.groundColor);
-    lightRefs.hemisphere.intensity = config.hemisphereLight.intensity;
-    lightRefs.hemisphere.visible = config.hemisphereLight.enabled;
+    lights.hemisphere.skyColor.set(config.hemisphereLight.skyColor);
+    lights.hemisphere.groundColor.set(config.hemisphereLight.groundColor);
+    lights.hemisphere.intensity = config.hemisphereLight.intensity;
+    lights.hemisphere.visible = config.hemisphereLight.enabled;
   }
 
   // Update directional light
-  if (newSettings.directional && lightRefs.directional) {
+  if (newSettings.directional && lights.directional) {
     Object.assign(config.directional, newSettings.directional);
-    const dirLight = lightRefs.directional;
+    const dirLight = lights.directional;
 
     dirLight.color.set(config.directional.color);
     dirLight.intensity = config.directional.intensity;
@@ -259,12 +208,12 @@ export function updateLighting(newSettings = {}) {
     newSettings.spotlights.forEach((spotUpdate, index) => {
       if (
         index >= config.spotlights.length ||
-        index >= lightRefs.spotlights.length
+        index >= lights.spotlights.length
       )
         return;
 
       Object.assign(config.spotlights[index], spotUpdate);
-      const spotlight = lightRefs.spotlights[index];
+      const spotlight = lights.spotlights[index];
       const spotConfig = config.spotlights[index];
 
       if (!spotlight) return;
@@ -307,16 +256,35 @@ export function updateLighting(newSettings = {}) {
     config.shadowsEnabled = newSettings.shadowsEnabled;
 
     // Update all lights' shadow casting based on global toggle
-    if (lightRefs.directional) {
-      lightRefs.directional.castShadow =
+    if (lights.directional) {
+      lights.directional.castShadow =
         config.directional.castShadow && config.shadowsEnabled;
     }
 
-    lightRefs.spotlights.forEach((spotlight, index) => {
+    lights.spotlights.forEach((spotlight, index) => {
       if (spotlight) {
         spotlight.castShadow =
           config.spotlights[index].castShadow && config.shadowsEnabled;
       }
     });
   }
+}
+
+/**
+ * Creates a helper to visualize a directional light's shadow camera
+ * @param {THREE.DirectionalLight} light - The directional light
+ * @returns {THREE.CameraHelper} Camera helper for the light
+ */
+export function createDirectionalLightHelper(light) {
+  return new THREE.CameraHelper(light.shadow.camera);
+}
+
+/**
+ * Creates a helper to visualize a spotlight's cone and shadow camera
+ * @param {THREE.SpotLight} light - The spotlight
+ * @param {number} color - Optional color for the helper
+ * @returns {THREE.SpotLightHelper} Spotlight helper
+ */
+export function createSpotlightHelper(light, color) {
+  return new THREE.SpotLightHelper(light, color);
 }

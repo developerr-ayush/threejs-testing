@@ -8,6 +8,7 @@ const NAME_TO_MODE = {
   T_Cam: "t_cam",
   T_Cam_Label: "T_Cam", // internal helper for label
   Front_Wing: "front_wing",
+  Side_Wide: "side_wide",
   Helper: "helper",
 };
 
@@ -244,14 +245,29 @@ export class CameraManager {
 
 // Helpers to build per-page camera lists
 export function getPageCameraList(pageId) {
-  if (pageId === "index") {
-    return ["Chase", "Top", "Bottom", "T_Cam", "Front_Wing", "Helper"];
-  }
+  // All pages show all camera angles for consistency
+  const allCameras = [
+    "Chase",
+    "Top",
+    "Bottom",
+    "T_Cam",
+    "Front_Wing",
+    "Side_Wide",
+    "Helper",
+  ];
+
+  // For driving simulation, we only use specific cameras
   if (pageId === "simulation") {
-    return ["Chase", "Top", "Helper"];
+    return [
+      "Chase",
+      "Top",
+      "Bottom",
+      "T_Cam",
+      "Front_Wing",
+      "Side_Wide",
+      "Helper",
+    ];
   }
-  if (pageId === "path") {
-    return ["Top", "Helper"];
-  }
-  return ["Chase", "Helper"];
+
+  return allCameras;
 }

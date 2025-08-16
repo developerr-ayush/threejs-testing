@@ -1,6 +1,7 @@
 import * as THREE from "three";
+import CONFIG from "./config.js";
 
-const STORAGE_KEY = "racePathsV1";
+const STORAGE_KEY = CONFIG.path.recorder.storageKey;
 
 const recorderState = {
   isRecording: false,

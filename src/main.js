@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import GUI from "lil-gui";
 import * as CANNON from "cannon-es";
-import { createScene } from "./scene.js";
+import { createScene, updateLighting, lightRefs } from "./scene.js";
 import { loadAllModels } from "./loadModels.js";
 import {
   createMainCamera,
@@ -82,10 +82,18 @@ window.carTargets = carPositions;
 
 // Renderer setup
 const app = document.getElementById("app");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  powerPreference: "high-performance",
+});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.physicallyCorrectLights = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
 app.appendChild(renderer.domElement);
 
 // Scene
@@ -576,6 +584,274 @@ const carCurrentPositions = carPositions.map(
   refreshSavedList();
   if (APP_MODE === "index") savedPathsFolder.open();
 
+  // Add lighting controls
+  const lightingFolder = gui.addFolder("Lighting & Shadows");
+
+  // Shadows global toggle
+  lightingFolder
+    .add(lightRefs.config, "shadowsEnabled")
+    .name("Enable Shadows")
+    .onChange((value) => {
+      updateLighting({ shadowsEnabled: value });
+    });
+
+  // Ambient Light
+  const ambientFolder = lightingFolder.addFolder("Ambient Light");
+  ambientFolder
+    .add(lightRefs.config.ambient, "enabled")
+    .name("Enabled")
+    .onChange((value) => {
+      updateLighting({ ambient: { enabled: value } });
+    });
+  ambientFolder
+    .add(lightRefs.config.ambient, "intensity", 0, 2, 0.05)
+    .name("Intensity")
+    .onChange((value) => {
+      updateLighting({ ambient: { intensity: value } });
+    });
+  ambientFolder
+    .addColor(lightRefs.config.ambient, "color")
+    .name("Color")
+    .onChange((value) => {
+      updateLighting({ ambient: { color: value } });
+    });
+
+  // Hemisphere Light
+  const hemiFolder = lightingFolder.addFolder("Hemisphere Light");
+  hemiFolder
+    .add(lightRefs.config.hemisphereLight, "enabled")
+    .name("Enabled")
+    .onChange((value) => {
+      updateLighting({ hemisphereLight: { enabled: value } });
+    });
+  hemiFolder
+    .add(lightRefs.config.hemisphereLight, "intensity", 0, 2, 0.05)
+    .name("Intensity")
+    .onChange((value) => {
+      updateLighting({ hemisphereLight: { intensity: value } });
+    });
+  hemiFolder
+    .addColor(lightRefs.config.hemisphereLight, "skyColor")
+    .name("Sky Color")
+    .onChange((value) => {
+      updateLighting({ hemisphereLight: { skyColor: value } });
+    });
+  hemiFolder
+    .addColor(lightRefs.config.hemisphereLight, "groundColor")
+    .name("Ground Color")
+    .onChange((value) => {
+      updateLighting({ hemisphereLight: { groundColor: value } });
+    });
+
+  // Directional Light (Sun)
+  const dirFolder = lightingFolder.addFolder("Directional Light (Sun)");
+  dirFolder
+    .add(lightRefs.config.directional, "enabled")
+    .name("Enabled")
+    .onChange((value) => {
+      updateLighting({ directional: { enabled: value } });
+    });
+  dirFolder
+    .add(lightRefs.config.directional, "intensity", 0, 2, 0.05)
+    .name("Intensity")
+    .onChange((value) => {
+      updateLighting({ directional: { intensity: value } });
+    });
+  dirFolder
+    .addColor(lightRefs.config.directional, "color")
+    .name("Color")
+    .onChange((value) => {
+      updateLighting({ directional: { color: value } });
+    });
+  dirFolder
+    .add(lightRefs.config.directional, "castShadow")
+    .name("Cast Shadows")
+    .onChange((value) => {
+      updateLighting({ directional: { castShadow: value } });
+    });
+
+  // Position controls for directional light
+  const dirPosFolder = dirFolder.addFolder("Position");
+  dirPosFolder
+    .add(lightRefs.config.directional.position, "x", -200, 200, 1)
+    .name("X")
+    .onChange((value) => {
+      updateLighting({
+        directional: { position: { x: value } },
+      });
+    });
+  dirPosFolder
+    .add(lightRefs.config.directional.position, "y", 0, 200, 1)
+    .name("Y")
+    .onChange((value) => {
+      updateLighting({
+        directional: { position: { y: value } },
+      });
+    });
+  dirPosFolder
+    .add(lightRefs.config.directional.position, "z", -200, 200, 1)
+    .name("Z")
+    .onChange((value) => {
+      updateLighting({
+        directional: { position: { z: value } },
+      });
+    });
+
+  // Shadow quality
+  dirFolder
+    .add(lightRefs.config.directional, "shadowMapSize", [512, 1024, 2048, 4096])
+    .name("Shadow Quality")
+    .onChange((value) => {
+      updateLighting({ directional: { shadowMapSize: value } });
+    });
+
+  // Shadow bias
+  dirFolder
+    .add(lightRefs.config.directional, "shadowBias", -0.001, 0.001, 0.0001)
+    .name("Shadow Bias")
+    .onChange((value) => {
+      updateLighting({ directional: { shadowBias: value } });
+    });
+
+  // Spotlight controls
+  lightRefs.config.spotlights.forEach((spotlight, index) => {
+    const spotFolder = lightingFolder.addFolder(`Spotlight ${index + 1}`);
+
+    spotFolder
+      .add(spotlight, "enabled")
+      .name("Enabled")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { enabled: value };
+        updateLighting(update);
+      });
+
+    spotFolder
+      .add(spotlight, "intensity", 0, 2, 0.05)
+      .name("Intensity")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { intensity: value };
+        updateLighting(update);
+      });
+
+    spotFolder
+      .addColor(spotlight, "color")
+      .name("Color")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { color: value };
+        updateLighting(update);
+      });
+
+    spotFolder
+      .add(spotlight, "castShadow")
+      .name("Cast Shadows")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { castShadow: value };
+        updateLighting(update);
+      });
+
+    spotFolder
+      .add(spotlight, "angle", 0, Math.PI / 2, 0.01)
+      .name("Angle")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { angle: value };
+        updateLighting(update);
+      });
+
+    spotFolder
+      .add(spotlight, "penumbra", 0, 1, 0.01)
+      .name("Penumbra")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { penumbra: value };
+        updateLighting(update);
+      });
+
+    spotFolder
+      .add(spotlight, "distance", 10, 1000, 10)
+      .name("Distance")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { distance: value };
+        updateLighting(update);
+      });
+
+    const spotPosFolder = spotFolder.addFolder("Position");
+    spotPosFolder
+      .add(spotlight.position, "x", -200, 200, 1)
+      .name("X")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { position: { x: value } };
+        updateLighting(update);
+      });
+    spotPosFolder
+      .add(spotlight.position, "y", 0, 200, 1)
+      .name("Y")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { position: { y: value } };
+        updateLighting(update);
+      });
+    spotPosFolder
+      .add(spotlight.position, "z", -200, 200, 1)
+      .name("Z")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { position: { z: value } };
+        updateLighting(update);
+      });
+
+    const spotTargetFolder = spotFolder.addFolder("Target");
+    spotTargetFolder
+      .add(spotlight.target, "x", -200, 200, 1)
+      .name("X")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { target: { x: value } };
+        updateLighting(update);
+      });
+    spotTargetFolder
+      .add(spotlight.target, "y", 0, 200, 1)
+      .name("Y")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { target: { y: value } };
+        updateLighting(update);
+      });
+    spotTargetFolder
+      .add(spotlight.target, "z", -200, 200, 1)
+      .name("Z")
+      .onChange((value) => {
+        const update = { spotlights: [] };
+        update.spotlights[index] = { target: { z: value } };
+        updateLighting(update);
+      });
+  });
+
+  // Copy light settings to clipboard
+  lightingFolder
+    .add(
+      {
+        copySettings: () => {
+          const settings = JSON.stringify(lightRefs.config, null, 2);
+          if (navigator.clipboard) {
+            navigator.clipboard
+              .writeText(settings)
+              .then(() => console.log("Lighting settings copied to clipboard"))
+              .catch((err) => console.error("Failed to copy settings:", err));
+          }
+          console.log("Lighting settings:", settings);
+        },
+      },
+      "copySettings"
+    )
+    .name("Copy Settings to Clipboard");
+
   // Console helpers for saved paths
   window.savedPaths = {
     list: () => getSavedPathNames(),
@@ -588,6 +864,38 @@ const carCurrentPositions = carPositions.map(
     const arr = pathRecorder.points.map((p) => [p.x, p.y, p.z]);
     const json = JSON.stringify({ racePathPoints: arr }, null, 2);
     console.log(json);
+
+    // Also save to localStorage
+    try {
+      const name = `recorded_path_${Date.now()}`;
+      const savedPaths = readAllSaved();
+
+      // Create path data
+      const pathData = {
+        name,
+        createdAt: Date.now(),
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        params: {
+          speed: 0.01,
+        },
+        racePathPoints: arr,
+      };
+
+      // Save to localStorage
+      savedPaths[name] = pathData;
+      writeAllSaved(savedPaths);
+      console.log(`Path saved to localStorage as "${name}"`);
+
+      // Refresh the saved paths list in the UI
+      refreshSavedList();
+    } catch (e) {
+      console.error("Failed to save path to localStorage:", e);
+    }
+
     return json;
   };
   window.clearRecordedPath = () => {
@@ -604,16 +912,45 @@ const carCurrentPositions = carPositions.map(
     pts.push(pts[0].clone());
     const curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom");
     const spaced = curve.getSpacedPoints(sampleCount - 1);
-    const json = JSON.stringify(
-      { racePathPoints: spaced.map((p) => [p.x, p.y, p.z]) },
-      null,
-      2
-    );
+    const spacedPoints = spaced.map((p) => [p.x, p.y, p.z]);
+    const json = JSON.stringify({ racePathPoints: spacedPoints }, null, 2);
     console.log(json);
+
+    // Also save to localStorage
+    try {
+      const name = `closed_path_${Date.now()}`;
+      const savedPaths = readAllSaved();
+
+      // Create path data
+      const pathData = {
+        name,
+        createdAt: Date.now(),
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        params: {
+          speed: 0.01,
+        },
+        racePathPoints: spacedPoints,
+      };
+
+      // Save to localStorage
+      savedPaths[name] = pathData;
+      writeAllSaved(savedPaths);
+      console.log(`Closed path saved to localStorage as "${name}"`);
+
+      // Refresh the saved paths list in the UI
+      refreshSavedList();
+    } catch (e) {
+      console.error("Failed to save closed path to localStorage:", e);
+    }
+
     return json;
   };
 
-  initializePathEditor(scene, helperCamera, renderer.domElement);
+  initializePathEditor(scene, helperCamera, renderer.domElement, trackObject);
   initializeCreatePath(() => carObjects[0]?.position?.clone());
   setOverlayLineForRecording(racePathLine);
 
