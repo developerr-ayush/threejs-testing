@@ -10,7 +10,14 @@ import {
   fixLightingIssues,
 } from "./lightDebug.js";
 import { resetLighting } from "./resetLighting.js";
-import { loadAllModels } from "./loadModels.js";
+import { fixModelMaterials, fixAllSceneMaterials } from "./fixMaterials.js";
+import {
+  createDebugOverlay,
+  createDebugGrid,
+  createDebugAxes,
+  createPerformanceMonitor,
+} from "./debugUtils.js";
+import { loadAllModels, createLoadingScreen } from "./loadModels.js";
 import {
   createMainCamera,
   setCameraAspect,
@@ -111,10 +118,20 @@ const scene = createScene();
 // Make scene and lightRefs available globally for debugging
 window.scene = scene;
 window.lightRefs = lightRefs;
+window.renderer = renderer;
 
 // Debug lighting
 console.log("Initial lighting configuration:");
 debugLights(lightRefs);
+
+// Initialize debug overlay and tools
+const debugOverlay = createDebugOverlay({ enabled: false });
+const debugGrid = createDebugGrid(scene, { enabled: false });
+const debugAxes = createDebugAxes(scene, { enabled: false });
+const performanceMonitor = createPerformanceMonitor({ enabled: false });
+
+// Initialize global debug controller
+window.debugController.init(scene, renderer, null, lightRefs);
 
 // Physics (optional)
 const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
@@ -176,82 +193,92 @@ const carCurrentPositions = carPositions.map(
 
 // Load models
 (async function init() {
-  const { track, cars } = await loadAllModels(
-    MODEL_PATHS.track,
-    MODEL_PATHS.cars
-  );
+  // Create loading screen
+  const loadingScreen = createLoadingScreen();
+  loadingScreen.updateText("Loading models...");
 
-  track.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    }
-  });
-  trackObject = track;
-  scene.add(track);
-
-  // Create a visual representation of the race path for debugging
-  const pathPoints = racePath.getPoints(500);
-  const pathGeometry = new THREE.BufferGeometry().setFromPoints(pathPoints);
-  const pathMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-  racePathLine = new THREE.Line(pathGeometry, pathMaterial);
-  scene.add(racePathLine);
-
-  // Create track physics body if physics enabled
-  if (world) {
-    const trackBody = createTrackBody(trackObject);
-    world.addBody(trackBody);
-  }
-
-  carObjects = cars.map((car, i) => {
-    car.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
+  try {
+    // Load all models with improved options
+    const { track, cars } = await loadAllModels(
+      MODEL_PATHS.track,
+      MODEL_PATHS.cars,
+      {
+        debug: true, // Enable debug logging for model loading
       }
-    });
-    // Place cars. Car 1 uses precise spawn, others use defaults
-    if (i === 0) {
-      car.position.set(
-        car1Spawn.position.x,
-        car1Spawn.position.y + physicsConfig.suspensionOffset,
-        car1Spawn.position.z
-      );
-      car.rotation.y = car1Spawn.yaw; // align yaw to track
-    } else {
-      car.position.copy(carCurrentPositions[i] || new THREE.Vector3());
-      // Ensure cars face along +Z (down the straight)
-      car.rotation.y = Math.PI / 2;
-    }
-    snapCarToTrack(car);
-    scene.add(car);
+    );
 
-    // Create a physics body for the car if physics enabled
+    // Track is already set up with proper materials and shadows from the loadAllModels function
+    trackObject = track;
+    scene.add(track);
+
+    // Create a visual representation of the race path for debugging
+    const pathPoints = racePath.getPoints(500);
+    const pathGeometry = new THREE.BufferGeometry().setFromPoints(pathPoints);
+    const pathMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+    racePathLine = new THREE.Line(pathGeometry, pathMaterial);
+    scene.add(racePathLine);
+
+    // Create track physics body if physics enabled
     if (world) {
-      const carBody = createCarBody(
-        i === 0
-          ? {
-              x: car1Spawn.position.x,
-              y: car1Spawn.position.y,
-              z: car1Spawn.position.z,
-            }
-          : carPositions[i]
-      );
-      // Match body orientation with visual car
-      const q = new CANNON.Quaternion();
-      q.setFromAxisAngle(
-        new CANNON.Vec3(0, 1, 0),
-        i === 0 ? car1Spawn.yaw : Math.PI / 2
-      );
-      carBody.quaternion.copy(q);
-      world.addBody(carBody);
-      carBodies.push(carBody);
-    } else {
-      carBodies.push(null);
+      const trackBody = createTrackBody(trackObject);
+      world.addBody(trackBody);
     }
 
-    return car;
-  });
+    carObjects = cars.map((car, i) => {
+      // Cars are already set up with proper materials and shadows from the loadAllModels function
+
+      // Place cars. Car 1 uses precise spawn, others use defaults
+      if (i === 0) {
+        car.position.set(
+          car1Spawn.position.x,
+          car1Spawn.position.y + physicsConfig.suspensionOffset,
+          car1Spawn.position.z
+        );
+        car.rotation.y = car1Spawn.yaw; // align yaw to track
+      } else {
+        car.position.copy(carCurrentPositions[i] || new THREE.Vector3());
+        // Ensure cars face along +Z (down the straight)
+        car.rotation.y = Math.PI / 2;
+      }
+      snapCarToTrack(car);
+      scene.add(car);
+
+      // Create a physics body for the car if physics enabled
+      if (world) {
+        const carBody = createCarBody(
+          i === 0
+            ? {
+                x: car1Spawn.position.x,
+                y: car1Spawn.position.y,
+                z: car1Spawn.position.z,
+              }
+            : carPositions[i]
+        );
+        // Match body orientation with visual car
+        const q = new CANNON.Quaternion();
+        q.setFromAxisAngle(
+          new CANNON.Vec3(0, 1, 0),
+          i === 0 ? car1Spawn.yaw : Math.PI / 2
+        );
+        carBody.quaternion.copy(q);
+        world.addBody(carBody);
+        carBodies.push(carBody);
+      } else {
+        carBodies.push(null);
+      }
+
+      return car;
+    });
+
+    // Hide loading screen when done
+    loadingScreen.updateText("Loading complete!");
+    setTimeout(() => {
+      loadingScreen.hide();
+    }, 500);
+  } catch (error) {
+    console.error("Error during initialization:", error);
+    loadingScreen.updateText("Error loading models. Please refresh the page.");
+  }
 
   // Create GUI controls
   gui.add(controlState, "raceMode").name("Enable Race Mode");
@@ -654,6 +681,20 @@ const carCurrentPositions = carPositions.map(
         );
       }
     },
+    fixAllMaterials: () => {
+      // Fix all materials in the scene to properly respond to lighting
+      fixAllSceneMaterials(scene, {
+        debug: true,
+        metalness: 0.5,
+        roughness: 0.5,
+      });
+    },
+    resetAllLighting: () => {
+      // Reset all lighting in the scene
+      resetLighting(scene);
+      console.log("All lighting has been reset");
+      debugLights(lightRefs);
+    },
   };
 
   debugFolder
@@ -678,9 +719,34 @@ const carCurrentPositions = carPositions.map(
     });
 
   debugFolder.add(debugState, "fixLighting").name("Fix Lighting Issues");
+  debugFolder.add(debugState, "resetAllLighting").name("Reset All Lighting");
   debugFolder.add(debugState, "increaseLights").name("Boost Light Intensity");
   debugFolder.add(debugState, "emergencyLight").name("Toggle Emergency Light");
+  debugFolder.add(debugState, "fixAllMaterials").name("Fix Model Materials");
   debugFolder.add(debugState, "printDebug").name("Print Debug Info");
+
+  // Advanced debugging tools
+  const advancedDebugFolder = debugFolder.addFolder("Advanced Debug Tools");
+  const advancedDebugState = {
+    toggleOverlay: () => window.debugController.toggleOverlay(),
+    toggleGrid: () => window.debugController.toggleGrid(),
+    toggleAxes: () => window.debugController.toggleAxes(),
+    togglePerformance: () => window.debugController.togglePerformance(),
+    inspectMaterials: () =>
+      window.inspectMaterials && window.inspectMaterials(),
+  };
+
+  advancedDebugFolder
+    .add(advancedDebugState, "toggleOverlay")
+    .name("Toggle Debug Overlay (Ctrl+D)");
+  advancedDebugFolder.add(advancedDebugState, "toggleGrid").name("Toggle Grid");
+  advancedDebugFolder.add(advancedDebugState, "toggleAxes").name("Toggle Axes");
+  advancedDebugFolder
+    .add(advancedDebugState, "togglePerformance")
+    .name("Toggle FPS Monitor");
+  advancedDebugFolder
+    .add(advancedDebugState, "inspectMaterials")
+    .name("Inspect All Materials");
 
   // Shadows global toggle
   lightingFolder
@@ -1248,6 +1314,11 @@ function animate(time) {
   if (window.emergencyLight && window.emergencyLight.visible) {
     const camera = cameraManager.getActiveCamera();
     window.emergencyLight.position.copy(camera.position);
+  }
+
+  // Update debug controller with current camera
+  if (window.debugController) {
+    window.debugController.camera = cameraManager.getActiveCamera();
   }
 
   // Render main scene with active camera

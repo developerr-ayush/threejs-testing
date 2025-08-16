@@ -4,12 +4,12 @@ import * as THREE from "three";
 const defaultLightingConfig = {
   ambient: {
     color: 0xffffff,
-    intensity: 0.5,
+    intensity: 0.7, // Increased from 0.5 for better visibility
     enabled: true,
   },
   directional: {
     color: 0xffffff,
-    intensity: 1.0,
+    intensity: 1.2, // Increased from 1.0 for better visibility
     position: { x: 50, y: 100, z: 50 },
     castShadow: true,
     shadowMapSize: 2048,
@@ -29,7 +29,7 @@ const defaultLightingConfig = {
       distance: 500,
       castShadow: true,
       shadowMapSize: 1024,
-      enabled: false,
+      enabled: false, // Keep disabled by default, can be enabled via GUI
     },
     {
       color: 0xffffff,
@@ -42,13 +42,13 @@ const defaultLightingConfig = {
       distance: 500,
       castShadow: true,
       shadowMapSize: 1024,
-      enabled: false,
+      enabled: false, // Keep disabled by default, can be enabled via GUI
     },
   ],
   hemisphereLight: {
-    skyColor: 0x87ceeb,
-    groundColor: 0x404040,
-    intensity: 0.6,
+    skyColor: 0x87ceeb, // Sky blue color
+    groundColor: 0x404040, // Dark grey for ground
+    intensity: 0.7, // Increased from 0.6 for better visibility
     enabled: true,
   },
   shadowsEnabled: true,
@@ -194,21 +194,39 @@ export function createScene(lightingConfig = {}) {
 export function updateLighting(newSettings = {}) {
   const config = lightRefs.config;
 
+  // Log update for debugging
+  if (newSettings.debug) {
+    console.log("Updating lighting with settings:", newSettings);
+  }
+
   // Update ambient light
   if (newSettings.ambient && lightRefs.ambient) {
     Object.assign(config.ambient, newSettings.ambient);
     lightRefs.ambient.color.set(config.ambient.color);
     lightRefs.ambient.intensity = config.ambient.intensity;
     lightRefs.ambient.visible = config.ambient.enabled;
+
+    // Force update for visibility
+    if (config.ambient.enabled && config.ambient.intensity > 0) {
+      lightRefs.ambient.visible = true;
+    }
   }
 
   // Update hemisphere light
   if (newSettings.hemisphereLight && lightRefs.hemisphere) {
     Object.assign(config.hemisphereLight, newSettings.hemisphereLight);
-    lightRefs.hemisphere.skyColor.set(config.hemisphereLight.skyColor);
+    lightRefs.hemisphere.color.set(config.hemisphereLight.skyColor);
     lightRefs.hemisphere.groundColor.set(config.hemisphereLight.groundColor);
     lightRefs.hemisphere.intensity = config.hemisphereLight.intensity;
     lightRefs.hemisphere.visible = config.hemisphereLight.enabled;
+
+    // Force update for visibility
+    if (
+      config.hemisphereLight.enabled &&
+      config.hemisphereLight.intensity > 0
+    ) {
+      lightRefs.hemisphere.visible = true;
+    }
   }
 
   // Update directional light
@@ -219,6 +237,11 @@ export function updateLighting(newSettings = {}) {
     dirLight.color.set(config.directional.color);
     dirLight.intensity = config.directional.intensity;
     dirLight.visible = config.directional.enabled;
+
+    // Force update for visibility
+    if (config.directional.enabled && config.directional.intensity > 0) {
+      dirLight.visible = true;
+    }
 
     if (newSettings.directional.position) {
       dirLight.position.set(
@@ -234,9 +257,15 @@ export function updateLighting(newSettings = {}) {
     if (dirLight.castShadow && newSettings.directional.shadowMapSize) {
       dirLight.shadow.mapSize.width = config.directional.shadowMapSize;
       dirLight.shadow.mapSize.height = config.directional.shadowMapSize;
+      // Force shadow map update
+      dirLight.shadow.map = null;
     }
 
-    if (dirLight.castShadow && newSettings.directional.shadowCameraSize) {
+    if (
+      dirLight.castShadow &&
+      (newSettings.directional.shadowCameraSize !== undefined ||
+        newSettings.directional.position)
+    ) {
       const size = config.directional.shadowCameraSize;
       dirLight.shadow.camera.left = -size;
       dirLight.shadow.camera.right = size;
@@ -250,6 +279,11 @@ export function updateLighting(newSettings = {}) {
       newSettings.directional.shadowBias !== undefined
     ) {
       dirLight.shadow.bias = config.directional.shadowBias;
+    }
+
+    // Ensure shadow camera is updated
+    if (dirLight.castShadow) {
+      dirLight.shadow.needsUpdate = true;
     }
   }
 
@@ -276,6 +310,11 @@ export function updateLighting(newSettings = {}) {
       spotlight.decay = spotConfig.decay;
       spotlight.visible = spotConfig.enabled;
 
+      // Force update for visibility
+      if (spotConfig.enabled && spotConfig.intensity > 0) {
+        spotlight.visible = true;
+      }
+
       if (spotUpdate.position) {
         spotlight.position.set(
           spotConfig.position.x,
@@ -297,6 +336,13 @@ export function updateLighting(newSettings = {}) {
       if (spotlight.castShadow && spotUpdate.shadowMapSize) {
         spotlight.shadow.mapSize.width = spotConfig.shadowMapSize;
         spotlight.shadow.mapSize.height = spotConfig.shadowMapSize;
+        // Force shadow map update
+        spotlight.shadow.map = null;
+      }
+
+      // Ensure shadow camera is updated
+      if (spotlight.castShadow) {
+        spotlight.shadow.needsUpdate = true;
       }
     });
   }
@@ -309,13 +355,27 @@ export function updateLighting(newSettings = {}) {
     if (lightRefs.directional) {
       lightRefs.directional.castShadow =
         config.directional.castShadow && config.shadowsEnabled;
+      if (lightRefs.directional.castShadow) {
+        lightRefs.directional.shadow.needsUpdate = true;
+      }
     }
 
     lightRefs.spotlights.forEach((spotlight, index) => {
       if (spotlight) {
         spotlight.castShadow =
           config.spotlights[index].castShadow && config.shadowsEnabled;
+        if (spotlight.castShadow) {
+          spotlight.shadow.needsUpdate = true;
+        }
       }
     });
+
+    // Force renderer to update shadow maps
+    if (window.renderer) {
+      window.renderer.shadowMap.needsUpdate = true;
+    }
   }
+
+  // Return the updated config for reference
+  return config;
 }
