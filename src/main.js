@@ -3,6 +3,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import GUI from "lil-gui";
 import * as CANNON from "cannon-es";
 import { createScene, updateLighting, lightRefs } from "./scene.js";
+import {
+  createLightHelpers,
+  updateLightHelpers,
+  debugLights,
+  fixLightingIssues,
+} from "./lightDebug.js";
+import { resetLighting } from "./resetLighting.js";
 import { loadAllModels } from "./loadModels.js";
 import {
   createMainCamera,
@@ -90,6 +97,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Use legacy lighting mode for better compatibility
+renderer.useLegacyLights = false;
 renderer.physicallyCorrectLights = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -98,6 +107,14 @@ app.appendChild(renderer.domElement);
 
 // Scene
 const scene = createScene();
+
+// Make scene and lightRefs available globally for debugging
+window.scene = scene;
+window.lightRefs = lightRefs;
+
+// Debug lighting
+console.log("Initial lighting configuration:");
+debugLights(lightRefs);
 
 // Physics (optional)
 const world = gameplayConfig.physicsEnabled ? createPhysicsWorld() : null;
@@ -586,6 +603,84 @@ const carCurrentPositions = carPositions.map(
 
   // Add lighting controls
   const lightingFolder = gui.addFolder("Lighting & Shadows");
+
+  // Add debug options
+  const debugFolder = lightingFolder.addFolder("Debug");
+  const debugState = {
+    showHelpers: false,
+    fixLighting: () => {
+      fixLightingIssues(scene, lightRefs);
+      console.log("Applied lighting fixes");
+      debugLights(lightRefs);
+    },
+    printDebug: () => {
+      debugLights(lightRefs);
+    },
+    increaseLights: () => {
+      // Increase ambient light
+      if (lightRefs.ambient) {
+        lightRefs.ambient.intensity = 1.0;
+        lightRefs.ambient.visible = true;
+        lightRefs.config.ambient.intensity = 1.0;
+        lightRefs.config.ambient.enabled = true;
+      }
+
+      // Increase directional light
+      if (lightRefs.directional) {
+        lightRefs.directional.intensity = 1.5;
+        lightRefs.directional.visible = true;
+        lightRefs.config.directional.intensity = 1.5;
+        lightRefs.config.directional.enabled = true;
+      }
+
+      console.log("Increased light intensity");
+      debugLights(lightRefs);
+    },
+    emergencyLight: () => {
+      // Add a bright point light at the camera position
+      if (!window.emergencyLight) {
+        const light = new THREE.PointLight(0xffffff, 1.0, 100);
+        light.position.copy(cameraManager.getActiveCamera().position);
+        scene.add(light);
+        window.emergencyLight = light;
+        console.log("Emergency light added");
+      } else {
+        // Toggle the light
+        window.emergencyLight.visible = !window.emergencyLight.visible;
+        console.log(
+          `Emergency light ${
+            window.emergencyLight.visible ? "enabled" : "disabled"
+          }`
+        );
+      }
+    },
+  };
+
+  debugFolder
+    .add(debugState, "showHelpers")
+    .name("Show Light Helpers")
+    .onChange((value) => {
+      if (value && !window.lightHelpers) {
+        window.lightHelpers = createLightHelpers(scene, lightRefs);
+      } else if (!value && window.lightHelpers) {
+        // Remove helpers from scene
+        if (window.lightHelpers.directional) {
+          scene.remove(window.lightHelpers.directional);
+        }
+        if (window.lightHelpers.directionalShadow) {
+          scene.remove(window.lightHelpers.directionalShadow);
+        }
+        window.lightHelpers.spotlights.forEach((helper) => {
+          if (helper) scene.remove(helper);
+        });
+        window.lightHelpers = null;
+      }
+    });
+
+  debugFolder.add(debugState, "fixLighting").name("Fix Lighting Issues");
+  debugFolder.add(debugState, "increaseLights").name("Boost Light Intensity");
+  debugFolder.add(debugState, "emergencyLight").name("Toggle Emergency Light");
+  debugFolder.add(debugState, "printDebug").name("Print Debug Info");
 
   // Shadows global toggle
   lightingFolder
@@ -1143,6 +1238,17 @@ function animate(time) {
   cameraManager.update();
 
   helperControls.update();
+
+  // Update light helpers if they exist
+  if (window.lightHelpers) {
+    updateLightHelpers(window.lightHelpers);
+  }
+
+  // Update emergency light position to follow camera
+  if (window.emergencyLight && window.emergencyLight.visible) {
+    const camera = cameraManager.getActiveCamera();
+    window.emergencyLight.position.copy(camera.position);
+  }
 
   // Render main scene with active camera
   renderer.render(scene, cameraManager.getActiveCamera());

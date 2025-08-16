@@ -91,57 +91,56 @@ export function createScene(lightingConfig = {}) {
   Object.assign(lightRefs.config, config);
 
   // Ambient light to softly illuminate all objects
-  if (config.ambient.enabled) {
-    const ambient = new THREE.AmbientLight(
-      config.ambient.color,
-      config.ambient.intensity
-    );
-    scene.add(ambient);
-    lightRefs.ambient = ambient;
-  }
+  // Always create ambient light for better visibility, but respect enabled state
+  const ambient = new THREE.AmbientLight(
+    config.ambient.color,
+    config.ambient.enabled ? config.ambient.intensity : 0
+  );
+  ambient.visible = config.ambient.enabled;
+  scene.add(ambient);
+  lightRefs.ambient = ambient;
 
   // Hemisphere light for sky/ground gradient lighting
-  if (config.hemisphereLight.enabled) {
-    const hemiLight = new THREE.HemisphereLight(
-      config.hemisphereLight.skyColor,
-      config.hemisphereLight.groundColor,
-      config.hemisphereLight.intensity
-    );
-    scene.add(hemiLight);
-    lightRefs.hemisphere = hemiLight;
-  }
+  // Always create hemisphere light for better visibility, but respect enabled state
+  const hemiLight = new THREE.HemisphereLight(
+    config.hemisphereLight.skyColor,
+    config.hemisphereLight.groundColor,
+    config.hemisphereLight.enabled ? config.hemisphereLight.intensity : 0
+  );
+  hemiLight.visible = config.hemisphereLight.enabled;
+  scene.add(hemiLight);
+  lightRefs.hemisphere = hemiLight;
 
   // Directional light to simulate sun
-  if (config.directional.enabled) {
-    const dirLight = new THREE.DirectionalLight(
-      config.directional.color,
-      config.directional.intensity
-    );
-    dirLight.position.set(
-      config.directional.position.x,
-      config.directional.position.y,
-      config.directional.position.z
-    );
-    dirLight.castShadow =
-      config.directional.castShadow && config.shadowsEnabled;
+  // Always create directional light for better visibility, but respect enabled state
+  const dirLight = new THREE.DirectionalLight(
+    config.directional.color,
+    config.directional.enabled ? config.directional.intensity : 0
+  );
+  dirLight.position.set(
+    config.directional.position.x,
+    config.directional.position.y,
+    config.directional.position.z
+  );
+  dirLight.castShadow = config.directional.castShadow && config.shadowsEnabled;
+  dirLight.visible = config.directional.enabled;
 
-    // Configure shadow properties
-    if (dirLight.castShadow) {
-      const size = config.directional.shadowCameraSize;
-      dirLight.shadow.mapSize.width = config.directional.shadowMapSize;
-      dirLight.shadow.mapSize.height = config.directional.shadowMapSize;
-      dirLight.shadow.camera.left = -size;
-      dirLight.shadow.camera.right = size;
-      dirLight.shadow.camera.top = size;
-      dirLight.shadow.camera.bottom = -size;
-      dirLight.shadow.camera.near = 1;
-      dirLight.shadow.camera.far = 500;
-      dirLight.shadow.bias = config.directional.shadowBias;
-    }
-
-    scene.add(dirLight);
-    lightRefs.directional = dirLight;
+  // Configure shadow properties
+  if (dirLight.castShadow) {
+    const size = config.directional.shadowCameraSize;
+    dirLight.shadow.mapSize.width = config.directional.shadowMapSize;
+    dirLight.shadow.mapSize.height = config.directional.shadowMapSize;
+    dirLight.shadow.camera.left = -size;
+    dirLight.shadow.camera.right = size;
+    dirLight.shadow.camera.top = size;
+    dirLight.shadow.camera.bottom = -size;
+    dirLight.shadow.camera.near = 1;
+    dirLight.shadow.camera.far = 500;
+    dirLight.shadow.bias = config.directional.shadowBias;
   }
+
+  scene.add(dirLight);
+  lightRefs.directional = dirLight;
 
   // Add spotlights
   lightRefs.spotlights = [];
